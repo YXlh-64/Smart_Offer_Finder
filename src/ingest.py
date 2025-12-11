@@ -1,12 +1,14 @@
 import sys
 from pathlib import Path
 from typing import List
+import os
 
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.embeddings import HuggingFaceEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain_community.embeddings.ollama import OllamaEmbeddings
+from pinecone import Pinecone
 
 from .config import get_settings
 
@@ -14,12 +16,15 @@ load_dotenv()
 
 
 def choose_embeddings(settings):
-    """Use HuggingFace embeddings (sentence-transformers, local, no API needed)."""
-    return HuggingFaceEmbeddings(model_name=settings.embedding_model)
+    """Use Ollama embeddings (qllama/multilingual-e5-base, local, no API needed)."""
+    return OllamaEmbeddings(
+        model=settings.embedding_model.replace("ollama/", ""),
+        base_url=settings.ollama_base_url
+    )
 
 
 def load_documents(data_dir: Path) -> List:
-    pdf_files = sorted(data_dir.glob("*.pdf"))
+    pdf_files = sorted(data_dir.glob("*.pdf")) # to be updated to match json
     if not pdf_files:
         raise FileNotFoundError(f"No PDF files found in {data_dir}. Add data then rerun.")
 
@@ -33,8 +38,9 @@ def load_documents(data_dir: Path) -> List:
 def build_vectorstore():
     settings = get_settings()
     data_dir = Path("data/raw")
-    vs_path = Path(settings.vectorstore_path)
-    vs_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if not settings.pinecone_api_key:
+        raise RuntimeError("PINECONE_API_KEY is required. Set it in .env file.")
 
     docs = load_documents(data_dir)
 
@@ -46,9 +52,19 @@ def build_vectorstore():
     chunks = splitter.split_documents(docs)
 
     embeddings = choose_embeddings(settings)
-    vectorstore = FAISS.from_documents(chunks, embeddings)
-    vectorstore.save_local(settings.vectorstore_path)
-    print(f"Saved FAISS index to {settings.vectorstore_path} with {len(chunks)} chunks.")
+    
+    # Initialize Pinecone
+    pc = Pinecone(api_key=settings.pinecone_api_key)
+    index = pc.Index(settings.pinecone_index_name)
+    
+    # Create vector store and add documents
+    vectorstore = PineconeVectorStore.from_documents(
+        chunks, 
+        embeddings, 
+        index_name=settings.pinecone_index_name
+    )
+    
+    print(f"Successfully indexed {len(chunks)} chunks to Pinecone index '{settings.pinecone_index_name}'.")
 
 
 if __name__ == "__main__":

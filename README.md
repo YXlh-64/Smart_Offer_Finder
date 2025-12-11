@@ -1,122 +1,247 @@
 # Smart Offer Finder
 
-An end-to-end Retrieval Augmented Generation (RAG) starter for the "SMART OFFER FINDER" challenge. It targets a lightweight but production-ready path to build a chatbot that surfaces relevant offers, conventions, and operational guides for Algeria Telecom agents. Everything is in English for clarity; adjust prompts and UI text as needed.
+An end-to-end Retrieval Augmented Generation (RAG) system for intelligent document search and Q&A. It surfaces relevant offers, conventions, and operational guides through a conversational AI interface. Everything runs locally or with free services—no expensive APIs required.
 
-## What you get
-- Opinionated RAG baseline with LangChain, FAISS, and FastAPI.
-- Simple ingest script for PDFs (offers, conventions, NGBSS guide, catalogue).
-- FastAPI endpoint for chat with grounded answers and cited sources.
-- Clear folder structure and env template to plug in your own data/keys.
+## ✨ Key Features
 
-## Repository layout
-- `data/raw/` — drop your PDFs here (offers, conventions, guides).
-- `data/vectorstore/` — serialized FAISS index (created after ingest).
-- `src/` — Python code (config, ingest, chat API).
-- `.env.example` — copy to `.env` and fill secrets.
-- `requirements.txt` — minimal dependencies.
+- **Local Embeddings**: Uses Ollama with multilingual-e5-base for semantic search
+- **Vector Database**: Pinecone for scalable and fast similarity search
+- **Local LLM**: Uses Ollama (free) or any API-based LLM (OpenAI, etc.)
+- **Web Interface**: Gradio provides an intuitive chat UI
+- **Source Citation**: Automatically cites documents used to answer questions
+- **Fully Configurable**: Easy to swap models and services
 
-## Prerequisites
-- Python 3.10+ recommended.
-- **Ollama** (free, lightweight embedding engine). Install from [ollama.ai](https://ollama.com/download), then pull the embedding model:
-  ```bash
-  ollama pull nomic-embed-text
-  ollama serve  # Start in a separate terminal
-  ```
-- OpenAI API key or OpenRouter key (for the LLM chat model). The embeddings are handled locally via Ollama, so no API calls there.
-- Basic build tools to install Python wheels (for `faiss-cpu`).
+## 📦 What You Get
 
-## Quickstart
-1) Start Ollama (in a separate terminal)
+- **Modular Architecture**: Separate config, ingest, and chat modules
+- **Production-Ready**: Error handling, logging, and graceful degradation
+- **Document Ingestion**: PDF loading with intelligent chunking
+- **Conversation Memory**: Context-aware multi-turn conversations
+- **Source Tracking**: Know which documents informed each answer
 
-```bash
-ollama serve
+## 📁 Repository Layout
+
+```
+Smart_Offer_Finder/
+├── src/
+│   ├── __init__.py
+│   ├── config.py          # Settings from environment variables
+│   ├── ingest.py          # Load PDFs → chunk → embed → Pinecone
+│   └── chat.py            # Gradio chat interface + RAG chain
+├── data/
+│   ├── raw/               # Your PDF files go here
+│   └── vectorstore/       # (unused with Pinecone)
+├── .env                   # Your secrets (DO NOT COMMIT)
+├── .env.example           # Template
+├── requirements.txt       # Python dependencies
+├── setup.fish             # Quick setup script (Linux/macOS)
+├── SETUP_GUIDE.md         # Detailed setup instructions
+└── README.md              # This file
 ```
 
-2) Install dependencies
+## 🚀 Quick Start
+
+### 1. Install Ollama
+
+Download from [ollama.ai](https://ollama.ai) and install.
+
+### 2. Pull Embedding Model
 
 ```bash
+ollama pull multilingual-e5-base
+```
+
+### 3. Create Pinecone Account
+
+- Sign up at [pinecone.io](https://pinecone.io)
+- Create an index named `smart-offer-finder` with 384 dimensions
+- Get your API key and environment
+
+### 4. Configure Environment
+
+```bash
+cp .env.example .env
+# Edit .env and add:
+# - PINECONE_API_KEY
+# - PINECONE_ENVIRONMENT
+```
+
+### 5. Setup & Install
+
+```bash
+./setup.fish              # Linux/macOS with fish shell
+# OR
 python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-3) Configure environment
+### 6. Add Documents
 
+Place your PDFs in `data/raw/`:
 ```bash
-cp .env.example .env
-# Fill OPENAI_API_KEY with your OpenRouter or OpenAI key
-# EMBEDDING_MODEL defaults to nomic-embed-text (local via Ollama)
-# OLLAMA_BASE_URL defaults to http://localhost:11434
-# Adjust LLM_MODEL as needed (default: gpt-4o via OpenRouter)
+cp path/to/offers.pdf data/raw/
+cp path/to/conventions.pdf data/raw/
 ```
 
-4) Add data
-
-- Place all challenge PDFs under `data/raw/`. Example:
-	- `Offres_Fixe_Fibre.pdf`
-	- `Conventions_Partenaires.pdf`
-	- `Guide_NGBSS.pdf`
-	- `Catalogue_Interconnexion_AT.pdf`
-
-5) Build the vector store
+### 7. Ingest to Pinecone
 
 ```bash
 python -m src.ingest
 ```
 
-This will chunk the PDFs and embed them using Ollama's `nomic-embed-text`, then save a FAISS index at `data/vectorstore/faiss_index`.
+### 8. Run Chat Interface
 
-6) Run the chatbot API
+In terminal 1 (keep running):
+```bash
+ollama serve
+```
 
+In terminal 2:
 ```bash
 python -m src.chat
-# Visit http://localhost:8000/docs to try the `/chat` endpoint
 ```
 
-7) Example request (once the server is running)
+Open browser to: **http://localhost:7860**
 
+## 🔧 Configuration
+
+### Environment Variables
+
+| Variable | Purpose | Example |
+|----------|---------|---------|
+| `PINECONE_API_KEY` | Pinecone authentication | `pcak-...` |
+| `PINECONE_INDEX_NAME` | Index name | `smart-offer-finder` |
+| `PINECONE_ENVIRONMENT` | Pinecone region | `us-east-1-abc1d23` |
+| `OLLAMA_BASE_URL` | Ollama server | `http://localhost:11434` |
+| `EMBEDDING_MODEL` | Embedding model | `ollama/multilingual-e5-base` |
+| `LLM_MODEL` | Chat model | `ollama/mistral` or `gpt-4` |
+| `CHUNK_SIZE` | Doc chunk size | `800` |
+| `CHUNK_OVERLAP` | Chunk overlap | `120` |
+
+### Using Different Models
+
+**Ollama models** (local, free):
 ```bash
-curl -X POST http://localhost:8000/chat \
-	-H "Content-Type: application/json" \
-	-d '{"question": "What offer fits a small business needing 50 Mbps and VoIP?"}'
+ollama pull mistral           # Fast, capable
+ollama pull neural-chat       # Smaller, efficient
+ollama pull llama2            # Larger, slower
 ```
 
-## How it works
-- **Embeddings (Ollama)**: Uses `nomic-embed-text` model running locally via Ollama. Fast, free, and no API calls needed.
-- **Ingest (`src/ingest.py`)**: Loads PDFs, splits with `RecursiveCharacterTextSplitter`, embeds with Ollama, and saves a FAISS index.
-- **Serve (`src/chat.py`)**: FastAPI + `ConversationalRetrievalChain` (ChatOpenAI/OpenRouter LLM + FAISS retriever + short-term memory). Returns answer plus source file hints.
+**API-based models** (OpenAI, etc.):
+```env
+LLM_MODEL=gpt-4
+LLM_BASE_URL=https://api.openai.com/v1
+LLM_API_KEY=sk-...
+```
 
-## Adapting to the challenge
-- **Prompting**: Add business guardrails (e.g., "Only answer with information from Algeria Telecom offers; if unsure, say you do not know").
-- **Metadata**: Extend ingestion to capture product names, dates, and pricing fields in `metadata` for better filtering.
-- **French-first UX**: Switch the user-facing prompt, answers, and UI copy to French. Keep system prompts focused on grounding and refusal when unsure.
-- **Relevance tuning**: Adjust `k` in the retriever and chunk sizes for your corpus; smaller chunks help precision, larger help recall.
-- **Evaluation**: Create a small set of Q/A pairs from real agent questions; use them to manually test or with `ragas` style checks.
+## 📖 Full Documentation
 
-## Minimal design notes for a web UI (not included)
-- Keep a clear separation: static frontend hits the FastAPI backend. Use a simple chat layout with cited sources.
-- Provide quick filters (e.g., by segment: entreprise, particulier, administration) mapped to metadata filters in the retriever.
-- Add a "hallucination guard" banner reminding agents to verify critical details (tarifs, durées, exclusions) against the cited PDF page.
+For detailed setup and troubleshooting, see **[SETUP_GUIDE.md](SETUP_GUIDE.md)**.
 
-## Common tweaks
-- Change LLM: set `LLM_MODEL` in `.env` (e.g., `gpt-4o`, `gpt-4o-mini`, or any OpenRouter-exposed model). For OpenRouter, set `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and put your OpenRouter key in `OPENAI_API_KEY`.
-- Change embedding model: run `ollama pull <model>` (e.g., `ollama pull nomic-embed-text:latest` or `ollama pull mxbai-embed-large`), then set `EMBEDDING_MODEL=<model>` in `.env`. Ensure Ollama is serving before ingesting.
-- Faster iteration: during ingest, temporarily set `CHUNK_SIZE=1200` and `CHUNK_OVERLAP=80` to cut chunk count, then tighten later for quality.
-- If Ollama is not on localhost: update `OLLAMA_BASE_URL` in `.env` (e.g., `http://192.168.1.10:11434`).
+Topics covered:
+- ✅ Step-by-step Ollama installation
+- ✅ Pinecone account setup
+- ✅ Environment configuration
+- ✅ Data ingestion process
+- ✅ Running the application
+- ✅ Troubleshooting common issues
+- ✅ Advanced model selection
 
-## Testing ideas
-- After ingest, inspect `data/vectorstore/faiss_index` size and log output to confirm chunk count.
-- Hit `/health` to ensure the chain is initialized.
-- Ask contrastive questions to verify grounding: "What differs between offer A and B for SMEs?" and ensure sources are returned.
+## 🏗️ How It Works
 
-## Troubleshooting
-- `No PDF files found`: add files to `data/raw/` and rerun ingest.
-- `Vector store not found`: run `python -m src.ingest` before starting the API.
-- `[ingest] failed: Connection error to Ollama`: ensure Ollama is running (`ollama serve`) on the address specified in `OLLAMA_BASE_URL`.
-- `Connection refused` on `http://localhost:11434`: start Ollama in a separate terminal with `ollama serve`.
-- Embedding model not found: run `ollama pull nomic-embed-text` (or the model specified in `EMBEDDING_MODEL`).
+```
+User Question
+     ↓
+  [Gradio UI]
+     ↓
+  [LangChain RAG Pipeline]
+     ↓
+  [Ollama: Question → Vector]
+     ↓
+  [Pinecone: Find Similar Docs]
+     ↓
+  [Retrieved Documents]
+     ↓
+  [Ollama/ChatGPT: Generate Answer]
+     ↓
+  [Answer + Sources] → UI
+```
 
-## Next steps (suggested)
-- Add UI (Streamlit, React, or a simple HTML page) that calls `/chat`.
-- Log interactions and top retrieved chunks to spot gaps in coverage.
-- Add lightweight eval scripts (e.g., retrieval precision @k against a small labeled set).
+### Components
+
+| Component | Role | Technology |
+|-----------|------|-----------|
+| **Embeddings** | Convert text to vectors | Ollama (multilingual-e5-base) |
+| **Vector DB** | Store & search vectors | Pinecone |
+| **LLM** | Generate answers | Ollama or OpenAI |
+| **Web UI** | Chat interface | Gradio |
+| **Orchestration** | Tie it all together | LangChain |
+
+## 💡 Customization
+
+### Add Business Logic
+
+Edit `src/chat.py` to add custom prompts:
+
+```python
+system_prompt = """You are an intelligent assistant for Algeria Telecom.
+- Only answer based on provided documents
+- If unsure, say 'I don't have that information'
+- Always cite sources
+"""
+```
+
+### Change Chunk Size
+
+Edit `.env`:
+```env
+CHUNK_SIZE=1000     # Larger chunks for broad context
+CHUNK_OVERLAP=150   # More overlap for edge cases
+```
+
+### Add Metadata Filtering
+
+Modify `src/ingest.py` to attach metadata to chunks, then filter in retriever.
+
+## 🐛 Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| "Connection refused" | Run `ollama serve` in separate terminal |
+| "PINECONE_API_KEY not found" | Add API key to `.env` |
+| "No PDFs found" | Add files to `data/raw/` |
+| "Slow responses" | Use smaller model: `ollama/neural-chat` |
+| "High memory" | Reduce model size or close other apps |
+
+See **[SETUP_GUIDE.md](SETUP_GUIDE.md)** for more troubleshooting.
+
+## 🔒 Security
+
+- ✅ `.env` is in `.gitignore` (secrets stay safe)
+- ✅ API keys never logged or exposed
+- ✅ Local LLM option (no external API calls)
+- ✅ Document access through Pinecone only
+
+## 🎯 Next Steps
+
+1. Follow the [Quick Start](#-quick-start)
+2. Read [SETUP_GUIDE.md](SETUP_GUIDE.md) for detailed help
+3. Customize prompts for your use case
+4. Add your documents and test
+5. Deploy to production (with proper security)
+
+## 📚 Resources
+
+- [Ollama Documentation](https://github.com/jmorganca/ollama)
+- [Pinecone Documentation](https://docs.pinecone.io/)
+- [LangChain Documentation](https://python.langchain.com/)
+- [Gradio Documentation](https://gradio.app/)
+
+## 📝 License
+
+This project is provided as-is for the Smart Offer Finder challenge.
+
+---
+
+**Ready to get started?** Follow the [Quick Start](#-quick-start) above or read [SETUP_GUIDE.md](SETUP_GUIDE.md) for comprehensive instructions.
