@@ -1,539 +1,253 @@
-import sys
-from pathlib import Path
-from typing import List, Tuple, Optional, Any
 import os
-import requests
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_TELEMETRY"] = "False"
+
 import json
-import time
-from datetime import datetime
-
-from dotenv import load_dotenv
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-from langchain_community.embeddings.ollama import OllamaEmbeddings
-from langchain_chroma import Chroma
-from langchain_community.llms import Ollama
-from langchain.llms.base import LLM
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
-from langchain_core.language_models import BaseLanguageModel
-from langchain.schema import BaseRetriever, Document
-from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 import gradio as gr
+from dotenv import load_dotenv
+# Use FAST GPU Embeddings
+from langchain_huggingface import HuggingFaceEmbeddings 
+from langchain_chroma import Chroma
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
+from langchain_core.documents import Document
+from typing import Any, List, Optional, Sequence
 import chromadb
+import requests
 
-from .config import get_settings
-from .reranker import BGEReranker
-from .timing_visualizer import visualize_timing
+# Import your modules
+from src.reranker import BGEReranker
+from src.config import get_settings
 
 load_dotenv()
 
-# Timing utilities
-class TimingTracker:
-    """Track execution time of different steps."""
-    
-    def __init__(self):
-        self.steps = {}
-        self.start_time = None
-    
-    def start_overall(self):
-        """Start overall timing."""
-        self.start_time = time.time()
-    
-    def record(self, step_name: str, start_time: float):
-        """Record step duration."""
-        duration = (time.time() - start_time) * 1000  # Convert to milliseconds
-        self.steps[step_name] = duration
-    
-    def print_summary(self):
-        """Print timing summary to console."""
-        if not self.steps:
-            return
-        
-        print("\n" + "="*60)
-        print("⏱️  EXECUTION TIME BREAKDOWN")
-        print("="*60)
-        
-        total_time = sum(self.steps.values())
-        
-        for step_name, duration in self.steps.items():
-            percentage = (duration / total_time * 100) if total_time > 0 else 0
-            bar_length = int(percentage / 5)
-            bar = "█" * bar_length + "░" * (20 - bar_length)
-            print(f"{step_name:<40} {duration:>8.2f}ms [{bar}] {percentage:>5.1f}%")
-        
-        print("-" * 60)
-        print(f"{'Total Time':<40} {total_time:>8.2f}ms")
-        print("="*60 + "\n")
+# Global reranker instance (lazy loaded)
+_reranker_instance = None
 
-# Global timing tracker
-timing_tracker = TimingTracker()
+def get_reranker():
+    """Get or create the global reranker instance."""
+    global _reranker_instance
+    if _reranker_instance is None:
+        _reranker_instance = BGEReranker(top_k=5)
+    return _reranker_instance
 
-# Global variables for chain and settings
-chain = None
-settings = None
+# --- CUSTOM RERANKER ADAPTER ---
+class FlashRankCompressor(BaseDocumentCompressor):
+    top_n: int = 5
 
-
-class DeepseekLLM(LLM):
-    """Custom LLM wrapper for Deepseek API"""
-    
-    model: str
-    api_key: str
-    api_url: str
-    temperature: float = 0.7
-    
-    @property
-    def _llm_type(self) -> str:
-        return "deepseek"
-    
-    def _call(
+    def compress_documents(
         self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> str:
-        """Call Deepseek API"""
-        try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            }
-            
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": self.temperature,
-                "stream": False,
-            }
-            
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
-            response.raise_for_status()
-            
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
+        documents: Sequence[Document],
+        query: str,
+        callbacks: Optional[Any] = None
+    ) -> Sequence[Document]:
+        if not documents: return []
+
+        # Use BGEReranker to rerank documents
+        reranker = get_reranker()
+        reranker.top_k = self.top_n
+        reranked_docs = reranker.rerank_with_scores(query, list(documents))
         
-        except Exception as e:
-            raise RuntimeError(f"Error calling Deepseek API: {str(e)}")
+        final_docs = []
+        for doc, score in reranked_docs:
+            doc.metadata["relevance_score"] = float(score)
+            final_docs.append(doc)
+        return final_docs
 
-
-def choose_embeddings(settings):
-    """Use Ollama embeddings (multilingual-e5-base, local, no API needed)."""
-    model_name = settings.embedding_model
-    return OllamaEmbeddings(
-        model=model_name,
-        base_url=settings.ollama_base_url
-    )
-
-
-def load_vectorstore(settings):
-    """Load ChromaDB vector store (local only)."""
-    embeddings = choose_embeddings(settings)
+# --- STREAMING LLM FUNCTION ---
+def stream_llm_response(prompt: str, settings) -> str:
+    """Stream response from DeepSeek API token by token."""
+    endpoint = settings.llm_base_url
+    if not endpoint.endswith("/chat/completions"):
+        endpoint = f"{endpoint.rstrip('/')}/chat/completions"
     
-    # Initialize ChromaDB persistent client
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {settings.llm_api_key}"
+    }
+    
+    payload = {
+        "model": settings.llm_model,
+        "messages": [
+            {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context. Be concise and accurate."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.3,
+        "stream": True  # Enable streaming!
+    }
+    
+    response = requests.post(endpoint, headers=headers, json=payload, stream=True, timeout=60)
+    response.raise_for_status()
+    
+    # Parse Server-Sent Events (SSE)
+    for line in response.iter_lines():
+        if line:
+            line = line.decode('utf-8')
+            if line.startswith('data: '):
+                data = line[6:]  # Remove 'data: ' prefix
+                if data.strip() == '[DONE]':
+                    break
+                try:
+                    chunk = json.loads(data)
+                    choices = chunk.get('choices', [])
+                    if choices and len(choices) > 0:
+                        delta = choices[0].get('delta', {})
+                        content = delta.get('content', '')
+                        if content:
+                            yield content
+                except (json.JSONDecodeError, KeyError, IndexError):
+                    continue
+
+# --- BUILD COMPONENTS ---
+components = None
+
+# Keywords for NGBSS guide detection
+NGBSS_KEYWORDS = [
+    "ngbss", "étapes", "etapes", "comment faire", "procédure", "procedure",
+    "guide", "tutoriel", "recharge", "bon de commande", "créer", "creer",
+    "activer", "désactiver", "facturation", "paiement", "retour ressource",
+    "pack idoom", "fibre", "4g", "adsl", "client portal"
+]
+
+def detect_query_type(query: str) -> str:
+    """Detect if query is about NGBSS procedures or offers."""
+    query_lower = query.lower()
+    for keyword in NGBSS_KEYWORDS:
+        if keyword in query_lower:
+            return "ngbss"
+    return "offers"
+
+def build_components(settings):
+    """Build retrievers for BOTH collections (called once)."""
+    print("🚀 Loading Embeddings on CUDA...")
+    embeddings = HuggingFaceEmbeddings(
+        model_name="intfloat/multilingual-e5-base",
+        model_kwargs={'device': 'cuda'},
+        encode_kwargs={'normalize_embeddings': True}
+    )
+    
     chroma_client = chromadb.PersistentClient(path=settings.chroma_persist_directory)
     
-    # Create vector store from existing collection
-    vectorstore = Chroma(
+    # --- OFFERS Collection ---
+    offers_vectorstore = Chroma(
         collection_name=settings.chroma_collection_name,
         embedding_function=embeddings,
         client=chroma_client
     )
-    
-    return vectorstore
-
-
-def build_llm(settings) -> BaseLanguageModel:
-    """Build the LLM based on configuration"""
-    
-    if settings.llm_model.startswith("qllama/"):
-        # Use Ollama local LLM
-        llm_model_name = settings.llm_model
-        return Ollama(
-            model=llm_model_name,
-            base_url=settings.ollama_base_url,
-            temperature=0.7
-        )
-    else:
-        # Use Deepseek or other API
-        if not settings.llm_api_key:
-            raise RuntimeError(
-                f"LLM_API_KEY is required for {settings.llm_model}. "
-                "Set it in .env file."
-            )
-        
-        # Assume Deepseek API
-        api_url = settings.llm_base_url or "https://api.modelarts-maas.com/v2/chat/completions"
-        # Ensure the URL ends with /chat/completions, don't append if already present
-        if not api_url.rstrip('/').endswith('/chat/completions'):
-            api_url = api_url.rstrip('/') + '/chat/completions'
-        return DeepseekLLM(
-            model=settings.llm_model,
-            api_key=settings.llm_api_key,
-            api_url=api_url,
-            temperature=0.7
-        )
-
-
-class RerankerRetriever(BaseRetriever):
-    """Custom retriever that uses reranking to improve retrieval quality."""
-    
-    vectorstore: Chroma
-    reranker: BGEReranker
-    initial_k: int = 20
-    timing_data: dict = {}  # Store timing for last retrieval
-    
-    class Config:
-        arbitrary_types_allowed = True
-    
-    def _get_relevant_documents(
-        self, query: str, *, run_manager: Optional[CallbackManagerForRetrieverRun] = None
-    ) -> List[Document]:
-        """Retrieve documents and rerank them with timing."""
-        # Reset timing data
-        self.timing_data = {}
-        
-        # Step 1: Retrieve initial documents
-        retrieval_start = time.time()
-        initial_docs = self.vectorstore.similarity_search(query, k=self.initial_k)
-        self.timing_data["vectorstore_search"] = (time.time() - retrieval_start) * 1000
-        
-        # Step 2: Rerank documents
-        reranking_start = time.time()
-        reranked_docs = self.reranker.rerank(query, initial_docs)
-        self.timing_data["reranking"] = (time.time() - reranking_start) * 1000
-        
-        return reranked_docs
-
-
-def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain with optional reranking."""
-    
-    print("\n[build_chain] Starting chain construction...")
-    chain_start = time.time()
-    
-    # Step 1: Build LLM
-    step_start = time.time()
-    print("  [1/4] Building LLM...")
-    llm = build_llm(settings)
-    llm_time = (time.time() - step_start) * 1000
-    print(f"       ✓ LLM built in {llm_time:.2f}ms")
-    
-    # Step 2: Load vectorstore
-    step_start = time.time()
-    print("  [2/4] Loading vectorstore...")
-    vectorstore = load_vectorstore(settings)
-    vectorstore_time = (time.time() - step_start) * 1000
-    print(f"       ✓ Vectorstore loaded in {vectorstore_time:.2f}ms")
-    
-    # Step 3: Setup retriever
-    step_start = time.time()
-    print("  [3/4] Setting up retriever...")
-    # Conditionally use reranker based on configuration
-    if settings.use_reranker:
-        print("       → Reranker enabled - using two-stage retrieval")
-        # Initialize reranker
-        reranker = BGEReranker(
-            model_name=settings.reranker_model,
-            top_k=settings.reranker_top_k
-        )
-        
-        # Create custom retriever with reranking
-        retriever = RerankerRetriever(
-            vectorstore=vectorstore,
-            reranker=reranker,
-            initial_k=settings.initial_retrieval_k
-        )
-    else:
-        print("       → Reranker disabled - using standard retrieval")
-        # Use standard retriever without reranking
-        retriever = vectorstore.as_retriever(
-            search_kwargs={"k": settings.reranker_top_k}
-        )
-    retriever_time = (time.time() - step_start) * 1000
-    print(f"       ✓ Retriever setup in {retriever_time:.2f}ms")
-    
-    # Step 4: Create memory and chain
-    step_start = time.time()
-    print("  [4/4] Creating conversation chain...")
-    memory = ConversationBufferMemory(
-        memory_key="chat_history", 
-        return_messages=True,
-        output_key="answer"
+    offers_base_retriever = offers_vectorstore.as_retriever(search_kwargs={"k": 15})
+    offers_compressor = FlashRankCompressor(top_n=5)
+    offers_retriever = ContextualCompressionRetriever(
+        base_compressor=offers_compressor,
+        base_retriever=offers_base_retriever
     )
     
-    final_chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memory,
-        return_source_documents=True
-    )
-    chain_creation_time = (time.time() - step_start) * 1000
-    print(f"       ✓ Chain created in {chain_creation_time:.2f}ms")
-    
-    # Print total build time
-    total_build_time = (time.time() - chain_start) * 1000
-    print("\n" + "="*60)
-    print(f"Chain build completed in {total_build_time:.2f}ms total")
-    print("="*60 + "\n")
-    
-    return final_chain
-
-
-def initialize_chain():
-    """Initialize the chain on startup."""
-    global chain, settings
+    # --- NGBSS Guides Collection ---
     try:
-        settings = get_settings()
-        chain = build_chain(settings)
-        print("[chat] Chain initialized successfully.")
-        return True
-    except Exception as exc:
-        print(f"[chat] Startup error: {exc}")
-        import traceback
-        traceback.print_exc()
-        return False
+        ngbss_vectorstore = Chroma(
+            collection_name="ngbss-guides",
+            embedding_function=embeddings,
+            client=chroma_client
+        )
+        ngbss_base_retriever = ngbss_vectorstore.as_retriever(search_kwargs={"k": 10})
+        ngbss_compressor = FlashRankCompressor(top_n=5)
+        ngbss_retriever = ContextualCompressionRetriever(
+            base_compressor=ngbss_compressor,
+            base_retriever=ngbss_base_retriever
+        )
+        print("✅ NGBSS guides collection loaded!")
+    except Exception as e:
+        print(f"⚠️ NGBSS collection not found, using offers only: {e}")
+        ngbss_retriever = None
+    
+    return {
+        "offers_retriever": offers_retriever,
+        "ngbss_retriever": ngbss_retriever,
+        "settings": settings
+    }
 
+# --- STREAMING CHAT FUNCTION ---
+def chat_stream(message, history):
+    """Stream the response word-by-word like ChatGPT."""
+    global components
+    if not components:
+        components = build_components(get_settings())
+    
+    # 1. Detect query type and select retriever
+    query_type = detect_query_type(message)
+    print(f"\n🔍 Query type detected: {query_type.upper()}")  # Debug print
+    
+    if query_type == "ngbss" and components["ngbss_retriever"]:
+        retriever = components["ngbss_retriever"]
+        context_type = "📋 NGBSS Guide"
+        system_prompt = "You are a helpful assistant that explains NGBSS procedures step by step. Be precise about button locations and navigation paths."
+    else:
+        retriever = components["offers_retriever"]
+        context_type = "📦 Offres"
+        system_prompt = "You are a helpful assistant that answers questions about Algérie Télécom offers. Be concise and accurate."
+    
+    # 2. Retrieve documents
+    query_prefixed = f"query: {message}"
+    docs = retriever.invoke(query_prefixed)
+    
+    # 3. Build context from retrieved docs
+    context = "\n\n---\n\n".join([doc.page_content for doc in docs])
+    
+    # 4. Build prompt with appropriate system message
+    prompt = f"""Based on the following context, answer the question accurately.
 
-def chat_response(message: str, chat_history):
-    """
-    Process chat message and return response with sources.
-    
-    Args:
-        message: User's question
-        chat_history: List of [user_msg, bot_msg] tuples (Gradio format)
-    
-    Returns:
-        Updated chat_history as list of tuples
-    """
-    global chain, settings
-    
-    # Start timing for this request
-    request_start = time.time()
-    steps_timing = {}
-    detailed_steps = {}
-    
-    # Step 1: Validate chain initialization
-    step_start = time.time()
-    if chain is None:
-        error_msg = "Chat interface not initialized. Make sure ChromaDB is properly configured and documents have been ingested."
-        if chat_history is None:
-            chat_history = []
-        chat_history.append([message, error_msg])
-        return chat_history
-    steps_timing["Chain validation"] = (time.time() - step_start) * 1000
+Context:
+{context}
 
+Question: {message}
+
+Answer:"""
+    
+    # 5. Format sources
+    sources_text = f"\n\n**{context_type} - Sources:**"
+    seen_sources = set()
+    for doc in docs:
+        name = doc.metadata.get("source", "Unknown")
+        score = doc.metadata.get("relevance_score", 0)
+        # For NGBSS, show procedure and step
+        if query_type == "ngbss":
+            procedure = doc.metadata.get("procedure_name", "")
+            step = doc.metadata.get("step_order", "")
+            if procedure:
+                name = f"{procedure} (Étape {step})"
+        if name not in seen_sources:
+            sources_text += f"\n- {name} (Score: {score:.2f})"
+            seen_sources.add(name)
+    
+    # 6. Stream the response
+    history = history + [[message, ""]]
+    partial_response = ""
+    
     try:
-        # Step 2: Invoke chain (retrieval + LLM call)
-        step_start = time.time()
-        result = chain.invoke({"question": message})
-        chain_invocation_time = (time.time() - step_start) * 1000
-        steps_timing["Chain invocation (retrieval + LLM)"] = chain_invocation_time
-        
-        # Extract detailed timing from retriever if available
-        # Try to get timing from the retriever in the chain
-        retrieval_time = 0.0
-        reranking_time = 0.0
-        llm_time = 0.0
-        
-        try:
-            retriever = chain.retriever
-            if hasattr(retriever, 'timing_data') and retriever.timing_data:
-                retrieval_time = retriever.timing_data.get("vectorstore_search", 0)
-                reranking_time = retriever.timing_data.get("reranking", 0)
-                llm_time = chain_invocation_time - (retrieval_time + reranking_time)
-                
-                detailed_steps["  ├─ Vectorstore search"] = retrieval_time
-                detailed_steps["  ├─ Reranking"] = reranking_time
-                detailed_steps["  └─ LLM generation"] = llm_time
-            else:
-                # Fallback: estimate LLM time as remainder
-                llm_time = chain_invocation_time
-                detailed_steps["  └─ LLM generation"] = chain_invocation_time
-        except Exception:
-            llm_time = chain_invocation_time
-            detailed_steps["  └─ LLM generation"] = chain_invocation_time
-        
-        # Step 3: Extract answer
-        step_start = time.time()
-        answer = result.get("answer", "No response generated.")
-        source_docs = result.get("source_documents", []) or []
-        steps_timing["Extract answer"] = (time.time() - step_start) * 1000
-        
-        # Step 4: Format sources
-        step_start = time.time()
-        sources = [doc.metadata.get("source", "unknown") for doc in source_docs]
-        sources_text = "\n\n**Sources:**\n" + "\n".join(f"- {source}" for source in sources) if sources else ""
-        full_response = answer + sources_text
-        steps_timing["Format sources"] = (time.time() - step_start) * 1000
-        
-        # Step 5: Update chat history
-        step_start = time.time()
-        if chat_history is None:
-            chat_history = []
-        chat_history.append([message, full_response])
-        steps_timing["Update chat history"] = (time.time() - step_start) * 1000
-        
-        # Print timing summary with detailed breakdown
-        total_time = (time.time() - request_start) * 1000
-        _print_timing_summary(steps_timing, detailed_steps, total_time)
-        
-        # Visualize timing breakdown for the three main phases
-        visualize_timing(retrieval_time, reranking_time, llm_time)
-        
-        return chat_history
+        for token in stream_llm_response(prompt, components["settings"]):
+            partial_response += token
+            history[-1][1] = partial_response
+            yield "", history
+    except Exception as e:
+        history[-1][1] = f"Error: {str(e)}"
+        yield "", history
+        return
     
-    except Exception as exc:
-        error_msg = f"Error processing message: {str(exc)}"
-        print(error_msg)
-        import traceback
-        traceback.print_exc()
-        
-        if chat_history is None:
-            chat_history = []
-        
-        chat_history.append([message, error_msg])
-        return chat_history
-
-
-def _print_timing_summary(steps_timing: dict, detailed_steps: dict = None, total_time: float = 0):
-    """Print timing summary for a chat response with detailed breakdown.
-    
-    Args:
-        steps_timing: Dict of step names to duration in milliseconds
-        detailed_steps: Dict of sub-steps (e.g., retrieval breakdown) to duration in ms
-        total_time: Total duration in milliseconds
-    """
-    if detailed_steps is None:
-        detailed_steps = {}
-    
-    print("\n" + "="*80)
-    print("⏱️  CHAT RESPONSE TIMING BREAKDOWN")
-    print("="*80)
-    
-    for step_name, duration_ms in steps_timing.items():
-        percentage = (duration_ms / total_time * 100) if total_time > 0 else 0
-        bar_length = min(int(percentage / 5), 20)
-        bar = "█" * bar_length + "░" * (20 - bar_length)
-        print(f"{step_name:<50} {duration_ms:>8.2f}ms [{bar}] {percentage:>6.1f}%")
-        
-        # Print detailed sub-steps if this is the chain invocation step
-        if "Chain invocation" in step_name and detailed_steps:
-            for detail_name, detail_duration in detailed_steps.items():
-                if detail_duration > 0:
-                    detail_percentage = (detail_duration / total_time * 100) if total_time > 0 else 0
-                    detail_bar_length = min(int(detail_percentage / 5), 20)
-                    detail_bar = "█" * detail_bar_length + "░" * (20 - detail_bar_length)
-                    print(f"{detail_name:<50} {detail_duration:>8.2f}ms [{detail_bar}] {detail_percentage:>6.1f}%")
-    
-    print("-" * 80)
-    print(f"{'Total Response Time':<50} {total_time:>8.2f}ms")
-    print("="*80 + "\n")
-
-
-def create_gradio_interface():
-    """Create and launch Gradio interface."""
-    with gr.Blocks(title="Smart Offer Finder") as demo:
-        gr.Markdown(
-            """
-            # Smart Offer Finder
-            
-            An intelligent RAG-powered chatbot to help you find relevant offers, conventions, and operational guides.
-            
-            **Note:** Make sure you have ingested documents first.
-            - Ingest documents: `python -m src.ingest`
-            """
-        )
-        
-        chatbot = gr.Chatbot(
-            label="Chat",
-            height=500,
-        )
-        
-        msg = gr.Textbox(
-            label="Your Question",
-            placeholder="Ask a question about offers, conventions, or guides...",
-            lines=2,
-        )
-        
-        submit_btn = gr.Button("Send", variant="primary")
-        clear_btn = gr.Button("Clear Chat")
-        
-        # Set up interactions
-        submit_btn.click(
-            fn=chat_response,
-            inputs=[msg, chatbot],
-            outputs=[chatbot]
-        ).then(
-            fn=lambda: "",
-            outputs=[msg]
-        )
-        
-        msg.submit(
-            fn=chat_response,
-            inputs=[msg, chatbot],
-            outputs=[chatbot]
-        ).then(
-            fn=lambda: "",
-            outputs=[msg]
-        )
-        
-        clear_btn.click(
-            fn=lambda: [],
-            outputs=[chatbot]
-        )
-        
-        gr.Markdown(
-            """
-            ---
-            **Built with:**
-            - [LangChain](https://langchain.com/) - RAG framework
-            - [ChromaDB](https://www.trychroma.com/) - Local vector database
-            - [Ollama](https://ollama.ai/) - Local embeddings
-            - [Deepseek](https://www.deepseek.com/) - LLM
-            - [Gradio](https://gradio.app/) - Web interface
-            """
-        )
-    
-    return demo
-
+    # 7. Append sources at the end
+    history[-1][1] = partial_response + sources_text
+    yield "", history
 
 def main():
-    """Main entry point."""
-    print("\n" + "="*60)
-    print("🚀 Initializing Smart Offer Finder...")
-    print("="*60)
-    
-    startup_start = time.time()
-    
-    if not initialize_chain():
-        print("\n❌ Failed to initialize chain. Please check:")
-        print("   1. ChromaDB data exists at: data/chroma_db")
-        print("   2. LLM_API_KEY is set in .env (if using remote LLM)")
-        print("   3. Documents have been ingested: python -m src.ingest --db chromadb")
-        sys.exit(1)
-    
-    startup_time = (time.time() - startup_start) * 1000
-    
-    print("\n✅ Chain initialized successfully!")
-    print(f"   Startup time: {startup_time:.2f}ms")
-    print("\n🚀 Launching Gradio interface...")
-    print("   Open browser to: http://localhost:7860")
-    print("="*60 + "\n")
-    
-    demo = create_gradio_interface()
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-    )
+    with gr.Blocks(title="Fast Offer Finder 🚀") as demo:
+        gr.Markdown("## ⚡ Smart Offer Finder (Streaming)")
+        chatbot = gr.Chatbot(height=600)
+        msg = gr.Textbox(label="Question", placeholder="Ask about offers...")
+        btn = gr.Button("Envoyer")
+        
+        # Use streaming with generators
+        btn.click(chat_stream, inputs=[msg, chatbot], outputs=[msg, chatbot])
+        msg.submit(chat_stream, inputs=[msg, chatbot], outputs=[msg, chatbot])
 
+    demo.launch(server_name="0.0.0.0", server_port=7860)
 
 if __name__ == "__main__":
     main()
