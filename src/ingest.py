@@ -6,7 +6,7 @@ from typing import List
 from dotenv import load_dotenv
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 from langchain_chroma import Chroma
 import chromadb
 from chromadb.config import Settings as ChromaSettings
@@ -69,7 +69,7 @@ def build_vectorstore():
     model_kwargs = {'device': 'cuda'}
     encode_kwargs = {'normalize_embeddings': True}
     
-    embeddings = HuggingFaceEmbeddings(
+    embeddings = SentenceTransformerEmbeddings(
         model_name="intfloat/multilingual-e5-base",
         model_kwargs=model_kwargs,
         encode_kwargs=encode_kwargs

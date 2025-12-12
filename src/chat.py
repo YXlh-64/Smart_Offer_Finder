@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 # Use FAST GPU Embeddings
-from langchain_huggingface import HuggingFaceEmbeddings 
+from langchain_community.embeddings.sentence_transformer import SentenceTransformerEmbeddings
 from langchain_chroma import Chroma
 from langchain.llms.base import LLM
 from langchain.retrievers import ContextualCompressionRetriever
@@ -88,7 +88,7 @@ class DeepseekLLM(LLM):
 def build_chain(settings):
     # 1. Initialize Fast GPU Embeddings
     print("🚀 Loading Embeddings on CUDA...")
-    embeddings = HuggingFaceEmbeddings(
+    embeddings = SentenceTransformerEmbeddings(
         model_name="intfloat/multilingual-e5-base",
         model_kwargs={'device': 'cuda'},
         encode_kwargs={'normalize_embeddings': True}
