@@ -14,10 +14,13 @@ from langchain_community.llms import Ollama
 from langchain.llms.base import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseLanguageModel
+from langchain.schema import BaseRetriever, Document
+from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
 import gradio as gr
 from pinecone import Pinecone
 
 from .config import get_settings
+from .reranker import BGEReranker
 
 load_dotenv()
 
@@ -135,13 +138,49 @@ def build_llm(settings) -> BaseLanguageModel:
         )
 
 
+class RerankerRetriever(BaseRetriever):
+    """Custom retriever that uses reranking to improve retrieval quality."""
+    
+    vectorstore: PineconeVectorStore
+    reranker: BGEReranker
+    initial_k: int = 20
+    
+    class Config:
+        arbitrary_types_allowed = True
+    
+    def _get_relevant_documents(
+        self, query: str, *, run_manager: Optional[CallbackManagerForRetrieverRun] = None
+    ) -> List[Document]:
+        """Retrieve documents and rerank them."""
+        # First, retrieve more documents than needed
+        initial_docs = self.vectorstore.similarity_search(query, k=self.initial_k)
+        
+        # Then rerank to get the most relevant ones
+        reranked_docs = self.reranker.rerank(query, initial_docs)
+        
+        return reranked_docs
+
+
 def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain."""
+    """Build the conversational retrieval chain with reranking."""
     
     llm = build_llm(settings)
     
     vectorstore = load_vectorstore(settings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
+    
+    # Initialize reranker
+    reranker = BGEReranker(
+        model_name=settings.reranker_model,
+        top_k=settings.reranker_top_k
+    )
+    
+    # Create custom retriever with reranking
+    retriever = RerankerRetriever(
+        vectorstore=vectorstore,
+        reranker=reranker,
+        initial_k=settings.initial_retrieval_k
+    )
+    
     memory = ConversationBufferMemory(
         memory_key="chat_history", 
         return_messages=True,
