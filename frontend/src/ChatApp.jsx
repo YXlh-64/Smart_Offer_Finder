@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import axios from 'axios';
 import './ChatApp.css';
 
 const ChatApp = () => {
@@ -26,26 +25,91 @@ const ChatApp = () => {
       type: 'user',
       text: input,
     };
+    const currentInput = input;
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
     setLoading(true);
 
     try {
-      // Call FastAPI backend
-      const response = await axios.post(`${API_BASE_URL}/chat`, {
-        question: input,
-      });
-
-      const { answer, sources } = response.data;
-
-      // Add bot message to chat
+      // Create streaming bot message placeholder
+      const botMessageId = Date.now() + 1;
       const botMessage = {
-        id: Date.now() + 1,
+        id: botMessageId,
         type: 'bot',
-        text: answer,
-        sources: sources || [],
+        text: '',
+        sources: [],
       };
       setMessages((prev) => [...prev, botMessage]);
+
+      // Call FastAPI streaming endpoint
+      const response = await fetch(`${API_BASE_URL}/chat/stream`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          question: currentInput,
+          session_id: 'default',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let streamedText = '';
+      let sources = [];
+
+      // Read streaming response
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split('\n').filter((line) => line.trim());
+
+        for (const line of lines) {
+          try {
+            const data = JSON.parse(line);
+
+            if (data.type === 'chunk') {
+              // Update streamed text
+              streamedText = data.content;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === botMessageId
+                    ? { ...msg, text: streamedText }
+                    : msg
+                )
+              );
+            } else if (data.type === 'sources') {
+              // Add sources
+              sources = data.content;
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === botMessageId
+                    ? { ...msg, sources: sources }
+                    : msg
+                )
+              );
+            } else if (data.type === 'error') {
+              // Handle error
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === botMessageId
+                    ? { ...msg, text: `Error: ${data.content}` }
+                    : msg
+                )
+              );
+              break;
+            }
+          } catch (parseError) {
+            // Ignore JSON parse errors
+          }
+        }
+      }
     } catch (error) {
       console.error('Error:', error);
       const errorMessage = {
