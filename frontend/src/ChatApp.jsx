@@ -1,4 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import './ChatApp.css';
 
 const ChatApp = () => {
@@ -7,7 +9,7 @@ const ChatApp = () => {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
-  const API_BASE_URL = 'http://localhost:8000';
+  const API_BASE_URL = 'http://100.121.131.56:8000';
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -75,7 +77,7 @@ const ChatApp = () => {
             const data = JSON.parse(line);
 
             if (data.type === 'chunk') {
-              // Update streamed text
+              // Backend sends full accumulated text, so replace (not append)
               streamedText = data.content;
               setMessages((prev) =>
                 prev.map((msg) =>
@@ -115,7 +117,7 @@ const ChatApp = () => {
       const errorMessage = {
         id: Date.now() + 1,
         type: 'bot',
-        text: 'Sorry, an error occurred while processing your request. Make sure the FastAPI server is running on http://localhost:8000.',
+        text: 'Sorry, an error occurred while processing your request. Make sure the FastAPI server is running on http://100.121.131.56:8000.',
       };
       setMessages((prev) => [...prev, errorMessage]);
     } finally {
@@ -149,7 +151,15 @@ const ChatApp = () => {
         {messages.map((msg) => (
           <div key={msg.id} className={`message message-${msg.type}`}>
             <div className="message-content">
-              <p>{msg.text}</p>
+              {msg.type === 'bot' ? (
+                <div className="markdown-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {msg.text}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p>{msg.text}</p>
+              )}
               {msg.sources && msg.sources.length > 0 && (
                 <div className="sources">
                   <strong>Sources:</strong>

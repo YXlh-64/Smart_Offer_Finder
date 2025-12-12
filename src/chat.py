@@ -5,6 +5,7 @@ import os
 import requests
 import json
 import time
+import re
 from datetime import datetime
 
 from dotenv import load_dotenv
@@ -18,6 +19,7 @@ from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseLanguageModel
 from langchain.schema import BaseRetriever, Document
 from langchain_core.callbacks.manager import CallbackManagerForRetrieverRun
+from langchain.prompts import PromptTemplate
 import gradio as gr
 import chromadb
 
@@ -26,6 +28,30 @@ from .reranker import BGEReranker
 from .timing_visualizer import visualize_timing
 
 load_dotenv()
+
+
+def detect_language(text: str) -> str:
+    """
+    Detect if the input text is in Arabic or French.
+    
+    Args:
+        text: Input text to analyze
+        
+    Returns:
+        'ar' for Arabic, 'fr' for French (default)
+    """
+    # Arabic Unicode range: \u0600-\u06FF (Arabic), \u0750-\u077F (Arabic Supplement)
+    arabic_pattern = re.compile(r'[\u0600-\u06FF\u0750-\u077F]')
+    
+    # Count Arabic characters
+    arabic_chars = len(arabic_pattern.findall(text))
+    total_chars = len(text.strip())
+    
+    # If more than 30% of characters are Arabic, consider it Arabic
+    if total_chars > 0 and (arabic_chars / total_chars) > 0.3:
+        return 'ar'
+    
+    return 'fr'  # Default to French
 
 # Timing utilities
 class TimingTracker:
@@ -71,6 +97,8 @@ timing_tracker = TimingTracker()
 # Global variables for chain and settings
 chain = None
 settings = None
+semantic_cache = None  # Global semantic cache instance
+embedding_model = None  # Global embedding model for cache
 
 
 class DeepseekLLM(LLM):
@@ -79,7 +107,8 @@ class DeepseekLLM(LLM):
     model: str
     api_key: str
     api_url: str
-    temperature: float = 0.7
+    temperature: float = 0.8
+    max_tokens: int = 2048  # Maximum tokens to generate
     
     @property
     def _llm_type(self) -> str:
@@ -105,6 +134,7 @@ class DeepseekLLM(LLM):
                     {"role": "user", "content": prompt}
                 ],
                 "temperature": self.temperature,
+                "max_tokens": self.max_tokens,
                 "stream": False,
             }
             
@@ -117,7 +147,9 @@ class DeepseekLLM(LLM):
             response.raise_for_status()
             
             result = response.json()
-            return result["choices"][0]["message"]["content"]
+            answer = result["choices"][0]["message"]["content"]
+            
+            return answer
         
         except Exception as e:
             raise RuntimeError(f"Error calling Deepseek API: {str(e)}")
@@ -158,7 +190,7 @@ def build_llm(settings) -> BaseLanguageModel:
         return Ollama(
             model=llm_model_name,
             base_url=settings.ollama_base_url,
-            temperature=0.7
+            temperature=settings.llm_temperature
         )
     else:
         # Use Deepseek or other API
@@ -177,7 +209,8 @@ def build_llm(settings) -> BaseLanguageModel:
             model=settings.llm_model,
             api_key=settings.llm_api_key,
             api_url=api_url,
-            temperature=0.7
+            temperature=settings.llm_temperature,
+            max_tokens=settings.llm_max_tokens
         )
 
 
@@ -212,29 +245,141 @@ class RerankerRetriever(BaseRetriever):
         return reranked_docs
 
 
+class DynamicLanguageChain:
+    """
+    Wrapper around ConversationalRetrievalChain that dynamically selects
+    the prompt template based on the detected language of the input question.
+    """
+    
+    def __init__(self, llm, retriever, memory, settings):
+        self.llm = llm
+        self.retriever = retriever
+        self.memory = memory
+        self.settings = settings
+        
+        # Pre-create both French and Arabic prompt templates
+        self.prompts = {
+            'fr': PromptTemplate(
+                template=settings.prompt_fr,
+                input_variables=["context", "question"]
+            ),
+            'ar': PromptTemplate(
+                template=settings.prompt_ar,
+                input_variables=["context", "question"]
+            )
+        }
+        
+        # Store the last detected language for debugging
+        self.last_detected_language = None
+        
+        # Store the last created chain for accessing retriever timing
+        self.last_chain = None
+    
+    def invoke(self, inputs: dict) -> dict:
+        """
+        Invoke the chain with dynamic language detection.
+        
+        Args:
+            inputs: Dictionary with 'question' key
+            
+        Returns:
+            Dictionary with 'answer' and 'source_documents'
+        """
+        question = inputs.get("question", "")
+        
+        # Detect the language of the question
+        detected_lang = detect_language(question)
+        self.last_detected_language = detected_lang
+        
+        # Select the appropriate prompt
+        qa_prompt = self.prompts[detected_lang]
+        
+        # Create a new chain with the selected prompt
+        chain = ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=self.retriever,
+            memory=self.memory,
+            return_source_documents=True,
+            combine_docs_chain_kwargs={
+                "prompt": qa_prompt,
+                "document_separator": "\n\n---\n\n"
+            },
+            verbose=False
+        )
+        
+        # Store for timing access
+        self.last_chain = chain
+        
+        # Invoke the chain
+        result = chain.invoke(inputs)
+        
+        # Log the detected language
+        print(f"[Language Detection] Detected: {detected_lang.upper()} for question: {question[:50]}...")
+        
+        return result
+
+
 def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain with optional reranking."""
+    """Build the conversational retrieval chain with optional reranking and semantic caching."""
+    global semantic_cache, embedding_model
     
     print("\n[build_chain] Starting chain construction...")
     chain_start = time.time()
     
+    # Step 0: Initialize Semantic Cache (if enabled)
+    if settings.use_semantic_cache:
+        try:
+            from .semantic_cache import SemanticCache
+            
+            print("  [0/5] Initializing Semantic Cache...")
+            step_start = time.time()
+            
+            # Initialize embedding model for cache (reuse the same as vectorstore)
+            if embedding_model is None:
+                embedding_model = OllamaEmbeddings(
+                    base_url=settings.ollama_base_url,
+                    model=settings.embedding_model.replace("ollama/", "")
+                )
+            
+            semantic_cache = SemanticCache(
+                redis_host=settings.redis_host,
+                redis_port=settings.redis_port,
+                redis_db=settings.redis_db,
+                redis_password=settings.redis_password,
+                embedding_dim=768,  # multilingual-e5-base dimension
+                similarity_threshold=settings.cache_similarity_threshold,
+                ttl_seconds=settings.cache_ttl_seconds,
+            )
+            
+            cache_time = (time.time() - step_start) * 1000
+            print(f"       ✓ Semantic Cache initialized in {cache_time:.2f}ms")
+            print(f"       → Similarity threshold: {settings.cache_similarity_threshold}")
+            print(f"       → TTL: {settings.cache_ttl_seconds}s ({settings.cache_ttl_seconds // 3600}h)")
+        except Exception as e:
+            print(f"       ⚠️  Semantic Cache initialization failed: {e}")
+            print(f"       → Continuing without caching...")
+            semantic_cache = None
+    else:
+        print("  [0/5] Semantic Cache disabled")
+        semantic_cache = None
+    
     # Step 1: Build LLM
     step_start = time.time()
-    print("  [1/4] Building LLM...")
+    print("  [1/5] Building LLM...")
     llm = build_llm(settings)
     llm_time = (time.time() - step_start) * 1000
     print(f"       ✓ LLM built in {llm_time:.2f}ms")
     
     # Step 2: Load vectorstore
     step_start = time.time()
-    print("  [2/4] Loading vectorstore...")
+    print("  [2/5] Loading vectorstore...")
     vectorstore = load_vectorstore(settings)
     vectorstore_time = (time.time() - step_start) * 1000
     print(f"       ✓ Vectorstore loaded in {vectorstore_time:.2f}ms")
     
     # Step 3: Setup retriever
     step_start = time.time()
-    print("  [3/4] Setting up retriever...")
+    print("  [3/5] Setting up retriever...")
     # Conditionally use reranker based on configuration
     if settings.use_reranker:
         print("       → Reranker enabled - using two-stage retrieval")
@@ -259,21 +404,24 @@ def build_chain(settings) -> ConversationalRetrievalChain:
     retriever_time = (time.time() - step_start) * 1000
     print(f"       ✓ Retriever setup in {retriever_time:.2f}ms")
     
-    # Step 4: Create memory and chain
+    # Step 4: Create memory and dynamic language chain
     step_start = time.time()
-    print("  [4/4] Creating conversation chain...")
+    print("  [4/5] Creating conversation chain with dynamic language detection...")
     memory = ConversationBufferMemory(
         memory_key="chat_history", 
         return_messages=True,
         output_key="answer"
     )
     
-    final_chain = ConversationalRetrievalChain.from_llm(
+    # Create dynamic language chain that selects prompt based on input language
+    print("       → Using dynamic language detection (FR/AR)")
+    final_chain = DynamicLanguageChain(
         llm=llm,
         retriever=retriever,
         memory=memory,
-        return_source_documents=True
+        settings=settings
     )
+    
     chain_creation_time = (time.time() - step_start) * 1000
     print(f"       ✓ Chain created in {chain_creation_time:.2f}ms")
     
@@ -284,6 +432,84 @@ def build_chain(settings) -> ConversationalRetrievalChain:
     print("="*60 + "\n")
     
     return final_chain
+
+
+def cached_chain_invoke(question: str) -> dict:
+    """
+    Invoke the chain with semantic caching.
+    Checks cache first, returns cached response if similarity > threshold.
+    Otherwise invokes the chain and caches the result.
+    
+    Args:
+        question: User's question
+        
+    Returns:
+        Dictionary with 'answer', 'source_documents', and 'cache_hit'
+    """
+    global chain, semantic_cache, embedding_model, settings
+    
+    # Check if chain is initialized
+    if chain is None:
+        raise RuntimeError("Chain is not initialized. Please ensure the chain is built before invoking.")
+    
+    # If cache is disabled or not initialized, invoke chain directly
+    if semantic_cache is None or not settings.use_semantic_cache:
+        result = chain.invoke({"question": question})
+        result["cache_hit"] = False
+        return result
+    
+    # Step 1: Generate embedding for the question
+    cache_start = time.time()
+    query_embedding = embedding_model.embed_query(question)
+    embedding_time = (time.time() - cache_start) * 1000
+    
+    # Step 2: Check cache
+    cached_result = semantic_cache.get(
+        query=question,
+        query_embedding=query_embedding,
+    )
+    
+    if cached_result:
+        # Cache hit! Return immediately
+        # Convert sources back to Document objects for compatibility
+        from langchain.schema import Document
+        source_docs = [
+            Document(page_content="", metadata={"source": src})
+            for src in cached_result["sources"]
+        ]
+        
+        return {
+            "answer": cached_result["answer"],
+            "source_documents": source_docs,
+            "cache_hit": True,
+            "similarity": cached_result["similarity"],
+            "cached_query": cached_result["cached_query"],
+            "latency_ms": cached_result["latency_ms"],
+        }
+    
+    # Step 3: Cache miss - invoke the chain
+    print(f"[Cache] Invoking chain for new query...")
+    chain_start = time.time()
+    result = chain.invoke({"question": question})
+    chain_time = (time.time() - chain_start) * 1000
+    
+    # Step 4: Store result in cache
+    answer = result.get("answer", "")
+    source_docs = result.get("source_documents", []) or []
+    sources = [doc.metadata.get("source", "unknown") for doc in source_docs]
+    
+    semantic_cache.set(
+        query=question,
+        query_embedding=query_embedding,
+        response=answer,
+        sources=sources,
+    )
+    
+    # Add cache info to result
+    result["cache_hit"] = False
+    result["chain_time_ms"] = chain_time
+    
+    return result
 
 
 def initialize_chain():

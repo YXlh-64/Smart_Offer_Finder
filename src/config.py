@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     llm_model: str = Field(default="ollama/mistral", alias="LLM_MODEL")
     llm_base_url: Optional[str] = Field(default=None, alias="LLM_BASE_URL")
     llm_api_key: Optional[str] = Field(default=None, alias="LLM_API_KEY")
+    llm_temperature: float = Field(default=0.7, alias="LLM_TEMPERATURE")
+    llm_max_tokens: int = Field(default=1024, alias="LLM_MAX_TOKENS")
 
     # Ingestion Configuration
     vectorstore_path: str = Field(default="data/vectorstore", alias="VECTORSTORE_PATH")
@@ -30,6 +32,51 @@ class Settings(BaseSettings):
     reranker_top_k: int = Field(default=4, alias="RERANKER_TOP_K")
     initial_retrieval_k: int = Field(default=20, alias="INITIAL_RETRIEVAL_K")
 
+    # Semantic Cache Configuration
+    use_semantic_cache: bool = Field(default=True, alias="USE_SEMANTIC_CACHE")
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_db: int = Field(default=0, alias="REDIS_DB")
+    redis_password: Optional[str] = Field(default=None, alias="REDIS_PASSWORD")
+    cache_similarity_threshold: float = Field(default=0.95, alias="CACHE_SIMILARITY_THRESHOLD")
+    cache_ttl_seconds: int = Field(default=86400, alias="CACHE_TTL_SECONDS")  # 24 hours
+
+    # Prompt Configuration
+    # prompt_language: str = Field(default="fr", alias="PROMPT_LANGUAGE")  # "fr" or "ar"
+
+    prompt_fr: str = """Vous êtes un assistant d'entreprise intelligent. Adaptez votre rôle selon la demande :
+    1. Offres/Prix : Assistant Commercial (détails et coûts).
+    2. Guide/Tutoriel : Support Technique (étapes par étapes).
+    3. Règles/Conventions : Responsable Juridique (citations précises).
+    4. Sinon : Assistant général.
+
+    Contrainte : Répondez UNIQUEMENT en utilisant le contexte fourni.
+
+    Formatage Markdown : Utilisez des titres (##, ###), du gras (**), des listes (numérotées ou à puces), des tableaux et des séparateurs (---) pour structurer clairement votre réponse.
+
+    Contexte :
+    {context}
+
+    Question : {question}
+
+    Réponse :"""
+
+    prompt_ar: str = """أنت مساعد ذكي. تكيّف حسب نوع الطلب:
+1. عروض وأسعار: مساعد مبيعات (شرح التكاليف والأهلية).
+2. أدلة/تعليمات: دعم فني (خطوات متسلسلة).
+3. قواعد وقوانين: مسؤول امتثال (اقتباسات رسمية).
+4. غير ذلك: مساعد عام.
+
+قيد: أجب فقط بناءً على السياق المقدم.
+
+تنسيق Markdown: استخدم العناوين (##, ###)، الخط العريض (**)، القوائم، الجداول، والفواصل الأفقية (---) لتنظيم الإجابة.
+
+السياق:
+{context}
+
+السؤال: {question}
+
+الإجابة:"""
 
     class Config:
         env_file = ".env"
