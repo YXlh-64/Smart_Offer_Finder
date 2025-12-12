@@ -1,4 +1,5 @@
 import sys
+import argparse
 from pathlib import Path
 from typing import List, Tuple, Optional, Any
 import os
@@ -10,6 +11,7 @@ from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_community.embeddings.ollama import OllamaEmbeddings
 from langchain_pinecone import PineconeVectorStore
+from langchain_community.vectorstores import Chroma
 from langchain_community.llms import Ollama
 from langchain.llms.base import LLM
 from langchain_core.callbacks.manager import CallbackManagerForLLMRun
@@ -24,6 +26,7 @@ load_dotenv()
 # Global variables for chain and settings
 chain = None
 settings = None
+vectordb_type = "chromadb"  # Default to chromadb
 
 
 class DeepseekLLM(LLM):
@@ -85,12 +88,27 @@ def choose_embeddings(settings):
     )
 
 
-def load_vectorstore(settings) -> PineconeVectorStore:
+def load_vectorstore(settings, db_type: str = "chromadb"):
+    """Load vector store (Pinecone or ChromaDB).
+    
+    Args:
+        settings: Configuration settings
+        db_type: "pinecone" or "chromadb"
+    """
+    embeddings = choose_embeddings(settings)
+    
+    if db_type == "pinecone":
+        return load_vectorstore_pinecone(settings, embeddings)
+    elif db_type == "chromadb":
+        return load_vectorstore_chromadb(settings, embeddings)
+    else:
+        raise ValueError(f"Unknown database type: {db_type}. Choose 'pinecone' or 'chromadb'")
+
+
+def load_vectorstore_pinecone(settings, embeddings):
     """Load Pinecone vector store."""
     if not settings.pinecone_api_key:
         raise RuntimeError("PINECONE_API_KEY is required to start the chat interface.")
-    
-    embeddings = choose_embeddings(settings)
     
     # Initialize Pinecone
     pc = Pinecone(api_key=settings.pinecone_api_key)
@@ -100,6 +118,20 @@ def load_vectorstore(settings) -> PineconeVectorStore:
         index_name=settings.pinecone_index_name,
         embedding=embeddings,
         namespace=""
+    )
+    
+    return vectorstore
+
+
+def load_vectorstore_chromadb(settings, embeddings):
+    """Load ChromaDB vector store (local)."""
+    persist_directory = settings.vectorstore_path
+    
+    # Load ChromaDB vector store
+    vectorstore = Chroma(
+        embedding_function=embeddings,
+        persist_directory=persist_directory,
+        collection_name="smart-offer-finder"
     )
     
     return vectorstore
@@ -135,12 +167,17 @@ def build_llm(settings) -> BaseLanguageModel:
         )
 
 
-def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain."""
+def build_chain(settings, db_type: str = "chromadb") -> ConversationalRetrievalChain:
+    """Build the conversational retrieval chain.
+    
+    Args:
+        settings: Configuration settings
+        db_type: "pinecone" or "chromadb"
+    """
     
     llm = build_llm(settings)
     
-    vectorstore = load_vectorstore(settings)
+    vectorstore = load_vectorstore(settings, db_type=db_type)
     retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
     memory = ConversationBufferMemory(
         memory_key="chat_history", 
@@ -156,13 +193,18 @@ def build_chain(settings) -> ConversationalRetrievalChain:
     )
 
 
-def initialize_chain():
-    """Initialize the chain on startup."""
-    global chain, settings
+def initialize_chain(db_type: str = "chromadb"):
+    """Initialize the chain on startup.
+    
+    Args:
+        db_type: "pinecone" or "chromadb"
+    """
+    global chain, settings, vectordb_type
     try:
         settings = get_settings()
-        chain = build_chain(settings)
-        print("[chat] Chain initialized successfully.")
+        vectordb_type = db_type
+        chain = build_chain(settings, db_type=db_type)
+        print(f"[chat] Chain initialized successfully using {db_type}.")
         return True
     except Exception as exc:
         print(f"[chat] Startup error: {exc}")
@@ -185,7 +227,7 @@ def chat_response(message: str, chat_history):
     global chain
     
     if chain is None:
-        error_msg = "Chat interface not initialized. Make sure Pinecone is properly configured."
+        error_msg = "Chat interface not initialized. Make sure the vector database is properly configured."
         if chat_history is None:
             chat_history = []
         chat_history.append({"role": "user", "content": message})
@@ -229,13 +271,16 @@ def create_gradio_interface():
     """Create and launch Gradio interface."""
     with gr.Blocks(title="Smart Offer Finder") as demo:
         gr.Markdown(
-            """
+            f"""
             # Smart Offer Finder
             
             An intelligent RAG-powered chatbot to help you find relevant offers, conventions, and operational guides.
             
+            **Vector Database:** {vectordb_type.upper()}
+            
             **Note:** Make sure you have ingested documents first.
-            - Ingest documents: `python -m src.ingest`
+            - Ingest to ChromaDB: `python -m src.ingest --db chromadb`
+            - Ingest to Pinecone: `python -m src.ingest --db pinecone`
             """
         )
         
@@ -282,7 +327,7 @@ def create_gradio_interface():
             ---
             **Built with:**
             - [LangChain](https://langchain.com/) - RAG framework
-            - [Pinecone](https://www.pinecone.io/) - Vector database
+            - [ChromaDB](https://www.trychroma.com/) / [Pinecone](https://www.pinecone.io/) - Vector database
             - [Ollama](https://ollama.ai/) - Local embeddings
             - [Deepseek](https://www.deepseek.com/) - LLM
             - [Gradio](https://gradio.app/) - Web interface
@@ -294,13 +339,39 @@ def create_gradio_interface():
 
 def main():
     """Main entry point."""
+    parser = argparse.ArgumentParser(
+        description="Launch Smart Offer Finder chat interface"
+    )
+    parser.add_argument(
+        "--db",
+        choices=["pinecone", "chromadb"],
+        default="chromadb",
+        help="Vector database to use (default: chromadb)"
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Server host (default: 0.0.0.0)"
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=7860,
+        help="Server port (default: 7860)"
+    )
+    
+    args = parser.parse_args()
+    
     print("Initializing Smart Offer Finder...")
     
-    if not initialize_chain():
+    if not initialize_chain(db_type=args.db):
         print("\n❌ Failed to initialize chain. Please check:")
-        print("   1. PINECONE_API_KEY is set in .env")
+        if args.db == "pinecone":
+            print("   1. PINECONE_API_KEY is set in .env")
+        else:
+            print("   1. ChromaDB data exists at: data/vectorstore")
         print("   2. LLM_API_KEY is set in .env")
-        print("   3. Documents have been ingested: python -m src.ingest")
+        print(f"   3. Documents have been ingested: python -m src.ingest --db {args.db}")
         sys.exit(1)
     
     print("\n✅ Chain initialized successfully!")
@@ -308,9 +379,9 @@ def main():
     
     demo = create_gradio_interface()
     demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
+        server_name=args.host,
+        server_port=args.port,
+        share=True,
     )
 
 
