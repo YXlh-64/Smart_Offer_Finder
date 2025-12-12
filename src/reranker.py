@@ -12,24 +12,37 @@ class BGEReranker:
     Uses cross-encoder models from BAAI for better semantic matching.
     """
     
-    def __init__(self, model_name: str = "BAAI/bge-reranker-v2-m3", top_k: int = 4):
+    def __init__(
+        self, 
+        model_name: str = "BAAI/bge-reranker-v2-m3", 
+        top_k: int = 4,
+        batch_size: int = 32
+    ):
         """
         Initialize the BGE reranker.
         
         Args:
             model_name: HuggingFace model name for the reranker
             top_k: Number of top documents to return after reranking
+            batch_size: Batch size for inference (higher = faster but more memory)
         """
         self.model_name = model_name
         self.top_k = top_k
+        self.batch_size = batch_size
         self.model = None
         
     def _load_model(self):
-        """Lazy load the reranker model."""
+        """Lazy load the reranker model with GPU support if available."""
         if self.model is None:
             print(f"[reranker] Loading reranker model: {self.model_name}")
-            self.model = CrossEncoder(self.model_name)
-            print(f"[reranker] Model loaded successfully")
+            
+            # CrossEncoder will automatically use GPU if available
+            self.model = CrossEncoder(self.model_name, max_length=512)
+            
+            # Check if GPU is being used
+            import torch
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            print(f"[reranker] Model loaded successfully on {device}")
     
     def rerank(self, query: str, documents: List[Document]) -> List[Document]:
         """
@@ -51,8 +64,8 @@ class BGEReranker:
         # Prepare query-document pairs for scoring
         pairs = [(query, doc.page_content) for doc in documents]
         
-        # Get relevance scores
-        scores = self.model.predict(pairs)
+        # Get relevance scores (batched for efficiency)
+        scores = self.model.predict(pairs, batch_size=self.batch_size, show_progress_bar=False)
         scored_docs = list(zip(scores, documents))
         
         # Sort by score in descending order
@@ -85,8 +98,8 @@ class BGEReranker:
         # Prepare query-document pairs for scoring
         pairs = [(query, doc.page_content) for doc in documents]
         
-        # Get relevance scores
-        scores = self.model.predict(pairs)
+        # Get relevance scores (batched for efficiency)
+        scores = self.model.predict(pairs, batch_size=self.batch_size, show_progress_bar=False)
         
         # Create list of (score, document) tuples
         scored_docs = list(zip(scores, documents))

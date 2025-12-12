@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     chunk_overlap: int = Field(default=120, alias="CHUNK_OVERLAP")
 
     # Reranker Configuration
+    use_reranker: bool = Field(default=True, alias="USE_RERANKER")
     reranker_model: str = Field(default="BAAI/bge-reranker-v2-m3", alias="RERANKER_MODEL")
     reranker_top_k: int = Field(default=4, alias="RERANKER_TOP_K")
     initial_retrieval_k: int = Field(default=20, alias="INITIAL_RETRIEVAL_K")

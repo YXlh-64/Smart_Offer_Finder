@@ -162,24 +162,33 @@ class RerankerRetriever(BaseRetriever):
 
 
 def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain with reranking."""
+    """Build the conversational retrieval chain with optional reranking."""
     
     llm = build_llm(settings)
     
     vectorstore = load_vectorstore(settings)
     
-    # Initialize reranker
-    reranker = BGEReranker(
-        model_name=settings.reranker_model,
-        top_k=settings.reranker_top_k
-    )
-    
-    # Create custom retriever with reranking
-    retriever = RerankerRetriever(
-        vectorstore=vectorstore,
-        reranker=reranker,
-        initial_k=settings.initial_retrieval_k
-    )
+    # Conditionally use reranker based on configuration
+    if settings.use_reranker:
+        print("[chat] Reranker enabled - using two-stage retrieval")
+        # Initialize reranker
+        reranker = BGEReranker(
+            model_name=settings.reranker_model,
+            top_k=settings.reranker_top_k
+        )
+        
+        # Create custom retriever with reranking
+        retriever = RerankerRetriever(
+            vectorstore=vectorstore,
+            reranker=reranker,
+            initial_k=settings.initial_retrieval_k
+        )
+    else:
+        print("[chat] Reranker disabled - using standard retrieval")
+        # Use standard retriever without reranking
+        retriever = vectorstore.as_retriever(
+            search_kwargs={"k": settings.reranker_top_k}
+        )
     
     memory = ConversationBufferMemory(
         memory_key="chat_history", 
