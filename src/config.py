@@ -6,9 +6,9 @@ from typing import Optional
 class Settings(BaseSettings):
     """Centralized configuration pulled from environment variables."""
 
-    # Pinecone Configuration
-    pinecone_api_key: Optional[str] = Field(default=None, alias="PINECONE_API_KEY")
-    pinecone_index_name: str = Field(default="smart-offer-finder", alias="PINECONE_INDEX_NAME")
+    # ChromaDB Configuration
+    chroma_persist_directory: str = Field(default="data/chroma_db", alias="CHROMA_PERSIST_DIRECTORY")
+    chroma_collection_name: str = Field(default="smart-offer-finder", alias="CHROMA_COLLECTION_NAME")
 
     # Ollama Configuration
     ollama_base_url: str = Field(default="http://localhost:11434", alias="OLLAMA_BASE_URL")
@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"  # Ignore extra environment variables (e.g., old Pinecone settings)
 
 
 def get_settings() -> Settings:

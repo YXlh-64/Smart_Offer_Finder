@@ -1,34 +1,76 @@
-import sys
-from pathlib import Path
-from typing import List, Tuple, Optional, Any
 import os
-import requests
-import json
+# Disable ChromaDB telemetry BEFORE any chromadb imports
+os.environ["ANONYMIZED_TELEMETRY"] = "False"
+os.environ["CHROMA_TELEMETRY"] = "False"
+
+import sys
+from typing import List, Optional, Sequence, Any
+
+import gradio as gr
 
 from dotenv import load_dotenv
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
 from langchain_community.embeddings.ollama import OllamaEmbeddings
-from langchain_pinecone import PineconeVectorStore
+from langchain_chroma import Chroma
 from langchain_community.llms import Ollama
-from langchain.llms.base import LLM
-from langchain_core.callbacks.manager import CallbackManagerForLLMRun
 from langchain_core.language_models import BaseLanguageModel
-import gradio as gr
-from pinecone import Pinecone
+from langchain.retrievers import ContextualCompressionRetriever
+from langchain.retrievers.document_compressors.base import BaseDocumentCompressor
+from langchain_core.documents import Document
+from langchain_core.callbacks.manager import CallbackManagerForLLMRun
+from langchain.llms.base import LLM
+import chromadb
+from chromadb.config import Settings as ChromaSettings
 
-from .config import get_settings
+# --- IMPORT YOUR RERANKER ---
+try:
+    from .reranker import reranker
+except ImportError:
+    from src.reranker import reranker
+
+try:
+    from .config import get_settings
+except ImportError:
+    from src.config import get_settings
 
 load_dotenv()
 
-# Global variables for chain and settings
-chain = None
-settings = None
+# --- CUSTOM RERANKER ADAPTER ---
+class BGECompressor(BaseDocumentCompressor):
+    top_n: int = 5
 
+    def compress_documents(
+        self,
+        documents: Sequence[Document],
+        query: str,
+        callbacks: Optional[Any] = None
+    ) -> Sequence[Document]:
+        if not documents:
+            return []
 
+        class NodeWrapper:
+            def __init__(self, doc):
+                self.text = doc.page_content
+                self.original_doc = doc
+                self.score = 0.0
+
+        nodes = [NodeWrapper(doc) for doc in documents]
+        
+        # Use existing reranker
+        print(f"🔄 Reranking {len(nodes)} documents...")
+        reranked_nodes = reranker._rerank_nodes(query, nodes, top_k=self.top_n, log=True)
+
+        final_docs = []
+        for node in reranked_nodes:
+            doc = node.original_doc
+            doc.metadata["relevance_score"] = node.score
+            final_docs.append(doc)
+
+        return final_docs
+
+# --- LLM WRAPPER ---
 class DeepseekLLM(LLM):
-    """Custom LLM wrapper for Deepseek API"""
-    
     model: str
     api_key: str
     api_url: str
@@ -38,281 +80,120 @@ class DeepseekLLM(LLM):
     def _llm_type(self) -> str:
         return "deepseek"
     
-    def _call(
-        self,
-        prompt: str,
-        stop: Optional[List[str]] = None,
-        run_manager: Optional[CallbackManagerForLLMRun] = None,
-        **kwargs: Any,
-    ) -> str:
-        """Call Deepseek API"""
+    def _call(self, prompt: str, stop: Optional[List[str]] = None, run_manager: Optional[CallbackManagerForLLMRun] = None, **kwargs: Any) -> str:
+        import requests
         try:
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {self.api_key}",
-            }
-            
+            headers = {"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"}
             payload = {
                 "model": self.model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
+                "messages": [{"role": "user", "content": prompt}],
                 "temperature": self.temperature,
                 "stream": False,
             }
-            
-            response = requests.post(
-                self.api_url,
-                headers=headers,
-                json=payload,
-                timeout=60
-            )
+            response = requests.post(self.api_url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
-            
-            result = response.json()
-            return result["choices"][0]["message"]["content"]
-        
+            return response.json()["choices"][0]["message"]["content"]
         except Exception as e:
             raise RuntimeError(f"Error calling Deepseek API: {str(e)}")
 
-
-def choose_embeddings(settings):
-    """Use Ollama embeddings (multilingual-e5-base, local, no API needed)."""
-    model_name = settings.embedding_model
-    return OllamaEmbeddings(
-        model=model_name,
-        base_url=settings.ollama_base_url
-    )
-
-
-def load_vectorstore(settings) -> PineconeVectorStore:
-    """Load Pinecone vector store."""
-    if not settings.pinecone_api_key:
-        raise RuntimeError("PINECONE_API_KEY is required to start the chat interface.")
-    
-    embeddings = choose_embeddings(settings)
-    
-    # Initialize Pinecone
-    pc = Pinecone(api_key=settings.pinecone_api_key)
-    
-    # Create vector store from existing index
-    vectorstore = PineconeVectorStore(
-        index_name=settings.pinecone_index_name,
-        embedding=embeddings,
-        namespace=""
-    )
-    
-    return vectorstore
-
-
-def build_llm(settings) -> BaseLanguageModel:
-    """Build the LLM based on configuration"""
-    
-    if settings.llm_model.startswith("qllama/"):
-        # Use Ollama local LLM
-        llm_model_name = settings.llm_model
-        return Ollama(
-            model=llm_model_name,
-            base_url=settings.ollama_base_url,
-            temperature=0.7
-        )
+# --- CHAIN BUILDER ---
+def build_chain(settings) -> ConversationalRetrievalChain:
+    if settings.llm_model.startswith("ollama/"):
+        llm = Ollama(model=settings.llm_model.replace("ollama/", ""), base_url=settings.ollama_base_url, temperature=0.1)
     else:
-        # Use Deepseek or other API
-        if not settings.llm_api_key:
-            raise RuntimeError(
-                f"LLM_API_KEY is required for {settings.llm_model}. "
-                "Set it in .env file."
-            )
-        
-        # Assume Deepseek API
-        return DeepseekLLM(
+        llm = DeepseekLLM(
             model=settings.llm_model,
             api_key=settings.llm_api_key,
-            api_url=settings.llm_base_url.rstrip('/') + '/chat/completions'
-            if settings.llm_base_url 
-            else "https://api.modelarts-maas.com/v2/chat/completions",
-            temperature=0.7
+            api_url=settings.llm_base_url
         )
 
-
-def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain."""
+    embeddings = OllamaEmbeddings(model=settings.embedding_model.replace("ollama/", ""), base_url=settings.ollama_base_url)
     
-    llm = build_llm(settings)
-    
-    vectorstore = load_vectorstore(settings)
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 4})
-    memory = ConversationBufferMemory(
-        memory_key="chat_history", 
-        return_messages=True,
-        output_key="answer"
+    # Create ChromaDB client with telemetry disabled
+    chroma_client = chromadb.PersistentClient(
+        path=settings.chroma_persist_directory,
+        settings=ChromaSettings(anonymized_telemetry=False)
     )
+    
+    vectorstore = Chroma(
+        collection_name=settings.chroma_collection_name,
+        embedding_function=embeddings,
+        client=chroma_client
+    )
+    
+    base_retriever = vectorstore.as_retriever(search_kwargs={"k": 30})
+    
+    compressor = BGECompressor(top_n=5)
+    compression_retriever = ContextualCompressionRetriever(
+        base_compressor=compressor,
+        base_retriever=base_retriever
+    )
+    
+    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True, output_key="answer")
     
     return ConversationalRetrievalChain.from_llm(
         llm=llm,
-        retriever=retriever,
+        retriever=compression_retriever,
         memory=memory,
         return_source_documents=True
     )
 
+# --- GRADIO UI (FIXED FOR VERSION 4.20) ---
 
-def initialize_chain():
-    """Initialize the chain on startup."""
-    global chain, settings
-    try:
-        settings = get_settings()
-        chain = build_chain(settings)
-        print("[chat] Chain initialized successfully.")
-        return True
-    except Exception as exc:
-        print(f"[chat] Startup error: {exc}")
-        import traceback
-        traceback.print_exc()
-        return False
+chain = None
 
-
-def chat_response(message: str, chat_history):
+def chat_response(message, history):
     """
-    Process chat message and return response with sources.
-    
-    Args:
-        message: User's question
-        chat_history: List of chat messages (Gradio format)
-    
-    Returns:
-        Tuple of (updated_chat_history, empty_string)
+    Logic adapted for Gradio 4.20 (List of Lists format).
+    history is: [[user_msg, bot_msg], [user_msg, bot_msg], ...]
     """
     global chain
+    if not chain:
+        settings = get_settings()
+        chain = build_chain(settings)
+
+    # 1. Run Chain
+    result = chain.invoke({"question": message})
+    answer = result.get("answer")
+    source_docs = result.get("source_documents", [])
     
-    if chain is None:
-        error_msg = "Chat interface not initialized. Make sure Pinecone is properly configured."
-        if chat_history is None:
-            chat_history = []
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": error_msg})
-        return chat_history
-
-    try:
-        result = chain.invoke({"question": message})
-        answer = result.get("answer", "No response generated.")
-        source_docs = result.get("source_documents", []) or []
-        
-        # Format sources
-        sources = [doc.metadata.get("source", "unknown") for doc in source_docs]
-        sources_text = "\n\n**Sources:**\n" + "\n".join(f"- {source}" for source in sources) if sources else ""
-        
-        full_response = answer + sources_text
-        
-        if chat_history is None:
-            chat_history = []
-        
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": full_response})
-        
-        return chat_history
+    # 2. Format Sources
+    sources_text = "\n\n**Sources (Verified by AI):**"
+    for i, doc in enumerate(source_docs):
+        score = doc.metadata.get("relevance_score", 0.0)
+        source_name = doc.metadata.get("source", "Unknown")
+        icon = "🟢" if score > 0.5 else "🟠"
+        sources_text += f"\n{icon} [{score:.3f}] {source_name}"
     
-    except Exception as exc:
-        error_msg = f"Error processing message: {str(exc)}"
-        print(error_msg)
-        import traceback
-        traceback.print_exc()
+    full_response = answer + sources_text
+    
+    # 3. Append to History (Format: List of [User, Bot])
+    # Note: Gradio automatically appends the current pair if we return it here? 
+    # Actually, for 'click' or 'submit', we usually return the updated list.
+    
+    # Check if history is None
+    if history is None:
+        history = []
         
-        if chat_history is None:
-            chat_history = []
-        
-        chat_history.append({"role": "user", "content": message})
-        chat_history.append({"role": "assistant", "content": error_msg})
-        return chat_history
-
-
-def create_gradio_interface():
-    """Create and launch Gradio interface."""
-    with gr.Blocks(title="Smart Offer Finder") as demo:
-        gr.Markdown(
-            """
-            # Smart Offer Finder
+    history.append([message, full_response])
             
-            An intelligent RAG-powered chatbot to help you find relevant offers, conventions, and operational guides.
-            
-            **Note:** Make sure you have ingested documents first.
-            - Ingest documents: `python -m src.ingest`
-            """
-        )
-        
-        chatbot = gr.Chatbot(
-            label="Chat",
-            height=500,
-        )
-        
-        msg = gr.Textbox(
-            label="Your Question",
-            placeholder="Ask a question about offers, conventions, or guides...",
-            lines=2,
-        )
-        
-        submit_btn = gr.Button("Send", variant="primary")
-        clear_btn = gr.Button("Clear Chat")
-        
-        # Set up interactions
-        submit_btn.click(
-            fn=chat_response,
-            inputs=[msg, chatbot],
-            outputs=[chatbot]
-        ).then(
-            fn=lambda: "",
-            outputs=[msg]
-        )
-        
-        msg.submit(
-            fn=chat_response,
-            inputs=[msg, chatbot],
-            outputs=[chatbot]
-        ).then(
-            fn=lambda: "",
-            outputs=[msg]
-        )
-        
-        clear_btn.click(
-            fn=lambda: [],
-            outputs=[chatbot]
-        )
-        
-        gr.Markdown(
-            """
-            ---
-            **Built with:**
-            - [LangChain](https://langchain.com/) - RAG framework
-            - [Pinecone](https://www.pinecone.io/) - Vector database
-            - [Ollama](https://ollama.ai/) - Local embeddings
-            - [Deepseek](https://www.deepseek.com/) - LLM
-            - [Gradio](https://gradio.app/) - Web interface
-            """
-        )
-    
-    return demo
-
+    return "", history # Return empty string to clear textbox, and updated history
 
 def main():
-    """Main entry point."""
-    print("Initializing Smart Offer Finder...")
-    
-    if not initialize_chain():
-        print("\n❌ Failed to initialize chain. Please check:")
-        print("   1. PINECONE_API_KEY is set in .env")
-        print("   2. LLM_API_KEY is set in .env")
-        print("   3. Documents have been ingested: python -m src.ingest")
-        sys.exit(1)
-    
-    print("\n✅ Chain initialized successfully!")
-    print("🚀 Launching Gradio interface...")
-    
-    demo = create_gradio_interface()
-    demo.launch(
-        server_name="0.0.0.0",
-        server_port=7860,
-        share=False,
-    )
+    with gr.Blocks(title="Smart Offer Finder") as demo:
+        gr.Markdown("# 🇩🇿 Smart Offer Finder (With BGE Reranker)")
+        
+        # REMOVED type="messages" to fix your error
+        chatbot = gr.Chatbot(height=600) 
+        
+        msg = gr.Textbox(label="Question")
+        btn = gr.Button("Envoyer")
+        
+        # For version 4.20, we pass the inputs and outputs
+        btn.click(chat_response, inputs=[msg, chatbot], outputs=[msg, chatbot])
+        msg.submit(chat_response, inputs=[msg, chatbot], outputs=[msg, chatbot])
 
+    demo.launch(server_name="0.0.0.0", server_port=7860)
 
 if __name__ == "__main__":
     main()
