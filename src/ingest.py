@@ -33,32 +33,56 @@ def build_vectorstore():
     for entry in data:
         content = entry.get("content", "")
         
-        # --- CRITICAL FIX 1: Add "passage: " prefix ---
-        # The E5 model requires this prefix to understand the text is a document to be searched
-        clean_content = content 
-        model_content = f"passage: {content}" 
-        
-        # --- CRITICAL FIX 2: Remove None values from Metadata ---
+        # --- CRITICAL FIX 1: Remove None values from Metadata ---
         # ChromaDB crashes if metadata contains None/Null. We filter them out here.
         raw_metadata = entry.get("metadata", {})
         metadata = {k: v for k, v in raw_metadata.items() if v is not None}
         
         # Store original text in metadata for display in the UI
-        metadata["original_text"] = clean_content
+        metadata["original_text"] = content
         
         # Ensure 'source' exists for citations
         if "source_filename" in metadata:
             metadata["source"] = metadata["source_filename"]
+        
+        # --- CRITICAL FIX 2: Add metadata prefix for better retrieval ---
+        # Include key metadata in the content that gets embedded
+        # This helps with retrieval of specific establishments, document types, etc.
+        metadata_prefix = []
+        
+        # Add document title if available
+        if "document_title" in metadata and metadata["document_title"]:
+            metadata_prefix.append(f"Titre: {metadata['document_title']}")
+        
+        # Add source filename if available
+        if "source_filename" in metadata and metadata["source_filename"]:
+            metadata_prefix.append(f"Source: {metadata['source_filename']}")
+        
+        # Add document type if available
+        if "document_type" in metadata and metadata["document_type"]:
+            metadata_prefix.append(f"Type: {metadata['document_type']}")
+        
+        # Combine metadata prefix with content
+        if metadata_prefix:
+            metadata_text = " | ".join(metadata_prefix)
+            enriched_content = f"{metadata_text}\n\n{content}"
+        else:
+            enriched_content = content
+        
+        # --- CRITICAL FIX 3: Add "passage: " prefix for E5 model ---
+        # The E5 model requires this prefix to understand the text is a document to be searched
+        model_content = f"passage: {enriched_content}"
 
         docs.append(Document(page_content=model_content, metadata=metadata))
 
     print(f"   Processed {len(docs)} documents.")
 
     # 2. Split Text
-    # We use a large chunk size (1200) to keep pricing tables intact
+    # Use chunk size from settings (configurable via .env)
+    print(f"📝 Using chunk_size={settings.chunk_size}, chunk_overlap={settings.chunk_overlap}")
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1200, 
-        chunk_overlap=200,
+        chunk_size=settings.chunk_size, 
+        chunk_overlap=settings.chunk_overlap,
         separators=["\n\n", "\n", " ", ""]
     )
     chunks = splitter.split_documents(docs)

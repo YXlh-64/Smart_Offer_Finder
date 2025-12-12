@@ -8,7 +8,6 @@ from typing import AsyncGenerator
 import asyncio
 import json
 from datetime import datetime
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,37 +17,11 @@ from pydantic import BaseModel
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from src.chat import initialize_chain, build_chain, get_settings, cached_chain_invoke
-from src import chat as chat_module  # Import the module to access its globals
+from src.chat import initialize_chain, build_chain, get_settings
 from src.timing_visualizer import get_visualizer
 
-# Note: We'll use chat_module.chain instead of a local chain variable
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize chain on startup"""
-    
-    try:
-        # Initialize the chain using the initialize_chain function
-        # This will set the global variables in src.chat module
-        settings = get_settings()
-        chat_module.settings = settings
-        chat_module.chain = build_chain(settings)
-        print("✅ Chain initialized successfully on startup")
-    except Exception as e:
-        print(f"❌ Startup error: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    yield
-    
-    # Cleanup on shutdown (if needed)
-    print("🛑 Shutting down...")
-
-
-# FastAPI app setup with lifespan
-app = FastAPI(title="Smart Offer Finder API", lifespan=lifespan)
+# FastAPI app setup
+app = FastAPI(title="Smart Offer Finder API")
 
 # CORS middleware
 app.add_middleware(
@@ -88,10 +61,11 @@ async def stream_chat_response(question: str, session_id: str = "default") -> As
     Yields:
         JSON strings containing chunks of the response or metadata
     """
+    global chain, settings
     import time
     
     try:
-        if chat_module.chain is None:
+        if chain is None:
             yield json.dumps({
                 "type": "error",
                 "content": "Chat interface not initialized. Please ensure ChromaDB is properly configured and documents have been ingested."
@@ -101,13 +75,10 @@ async def stream_chat_response(question: str, session_id: str = "default") -> As
         # Start timing the chain invocation
         chain_start = time.time()
         
-        # Invoke the chain with semantic caching
-        result = cached_chain_invoke(question)
+        # Invoke the chain
+        result = chain.invoke({"question": question})
         
         chain_time = (time.time() - chain_start) * 1000  # Convert to milliseconds
-        
-        # Check if it was a cache hit
-        is_cache_hit = result.get("cache_hit", False)
         
         answer = result.get("answer", "No response generated.")
         source_docs = result.get("source_documents", []) or []
@@ -119,7 +90,7 @@ async def stream_chat_response(question: str, session_id: str = "default") -> As
         generation_time = 0.0
         
         try:
-            retriever = chat_module.chain.retriever
+            retriever = chain.retriever
             if hasattr(retriever, 'timing_data') and retriever.timing_data:
                 retrieval_time = retriever.timing_data.get("vectorstore_search", 0)
                 reranking_time = retriever.timing_data.get("reranking", 0)
@@ -160,28 +131,21 @@ async def stream_chat_response(question: str, session_id: str = "default") -> As
         except Exception as e:
             print(f"Warning: Could not extract timing data: {e}")
         
-        # Stream the answer character by character preserving formatting
-        # Send chunks to simulate streaming while preserving newlines and markdown
-        chunk_size = 50  # Send 50 characters at a time
-        full_text = ""
+        # Stream the answer token by token (simulate streaming by splitting into words)
+        words = answer.split()
+        accumulated_text = ""
         
-        for i in range(0, len(answer), chunk_size):
-            chunk = answer[i:i + chunk_size]
-            full_text += chunk
+        for i, word in enumerate(words):
+            accumulated_text += word + " "
             
-            # Send accumulated text
-            yield json.dumps({
-                "type": "chunk",
-                "content": full_text  # Send full accumulated text with preserved formatting
-            }) + "\n"
-            await asyncio.sleep(0.03)  # Small delay for smoother streaming
-        
-        # Make sure the complete text is sent at the end
-        if full_text != answer:
-            yield json.dumps({
-                "type": "chunk",
-                "content": answer  # Send complete answer with all formatting
-            }) + "\n"
+            # Send chunks periodically (every 5 words or at the end)
+            if (i + 1) % 5 == 0 or i == len(words) - 1:
+                yield json.dumps({
+                    "type": "chunk",
+                    "content": accumulated_text
+                }) + "\n"
+                accumulated_text = ""
+                await asyncio.sleep(0.01)  # Small delay to simulate streaming
         
         # Send sources at the end
         if sources:
@@ -202,40 +166,30 @@ async def stream_chat_response(question: str, session_id: str = "default") -> As
         }) + "\n"
 
 
+@app.on_event("startup")
+async def startup_event():
+    """Initialize chain on startup"""
+    global chain, settings
+    
+    try:
+        from src.chat import get_settings
+        settings = get_settings()
+        from src.chat import build_chain
+        chain = build_chain(settings)
+        print("✅ Chain initialized successfully on startup")
+    except Exception as e:
+        print(f"❌ Startup error: {e}")
+        import traceback
+        traceback.print_exc()
+
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
     return {
         "status": "ok",
-        "chain_initialized": chat_module.chain is not None
+        "chain_initialized": chain is not None
     }
-
-
-@app.post("/reload")
-async def reload_chain():
-    """Reload the chain with latest settings and code"""
-    
-    try:
-        # Reload settings
-        settings = get_settings()
-        # Rebuild chain with new settings
-        chat_module.settings = settings
-        chat_module.chain = build_chain(settings)
-        return {
-            "status": "success",
-            "message": "Chain reloaded successfully",
-            "settings": {
-                "llm_model": settings.llm_model,
-                "use_reranker": settings.use_reranker,
-                "max_tokens": settings.llm_max_tokens,
-                "temperature": settings.llm_temperature
-            }
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error reloading chain: {str(e)}"
-        )
 
 
 @app.post("/chat")
@@ -245,15 +199,16 @@ async def chat(message: ChatMessage):
     
     Returns complete response with sources.
     """
+    global chain
     
-    if chat_module.chain is None:
+    if chain is None:
         raise HTTPException(
             status_code=503,
             detail="Chat interface not initialized. Please ensure ChromaDB is properly configured and documents have been ingested."
         )
     
     try:
-        result = cached_chain_invoke(message.question)
+        result = chain.invoke({"question": message.question})
         answer = result.get("answer", "No response generated.")
         source_docs = result.get("source_documents", []) or []
         sources = [doc.metadata.get("source", "unknown") for doc in source_docs]
@@ -280,8 +235,9 @@ async def chat_stream(message: ChatMessage):
     - {"type": "complete"}
     - {"type": "error", "content": "error message"}
     """
+    global chain
     
-    if chat_module.chain is None:
+    if chain is None:
         async def error_stream():
             yield json.dumps({
                 "type": "error",
@@ -359,11 +315,8 @@ async def root():
         "version": "1.0.0",
         "endpoints": {
             "GET /health": "Health check",
-            "POST /reload": "Reload chain with latest settings",
             "POST /chat": "Non-streaming chat endpoint",
             "POST /chat/stream": "Streaming chat endpoint (Server-Sent Events)",
-            "GET /stats/timing": "Get timing statistics",
-            "GET /stats/timing/export": "Export timing data"
         },
         "usage": {
             "chat": {
@@ -374,11 +327,6 @@ async def root():
                 "description": "Send a question and receive streaming response",
                 "payload": {"question": "What are the available offers?", "session_id": "optional"},
                 "response_format": "Server-Sent Events (SSE) with chunks"
-            },
-            "reload": {
-                "description": "Reload the chain without restarting server",
-                "method": "POST",
-                "use_case": "After changing .env or code files"
             }
         }
     }
@@ -387,10 +335,9 @@ async def root():
 if __name__ == "__main__":
     import uvicorn
     
-    # Use import string format for auto-reload to work
     uvicorn.run(
-        "main:app",  # Import string instead of app object
+        app,
         host="0.0.0.0",
         port=8000,
-        reload=True  # Enable auto-reload on code changes
+        reload=False
     )
