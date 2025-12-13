@@ -1,400 +1,337 @@
 """
-Example: Integrating Hybrid Retriever with RAG System
+Hybrid Retriever Implementation
 
-This script demonstrates how to use the hybrid retriever in your existing
-RAG system. It shows three different approaches with different weight configurations.
+Combines BM25 (sparse/keyword) and Dense (semantic/embedding) retrieval
+using Reciprocal Rank Fusion (RRF) for improved search quality.
+
+Includes language detection to filter documents by language.
 """
 
-import sys
-from pathlib import Path
+import time
+import re
+from typing import List, Optional, Dict, Any
 
-# Add src to path
-sys.path.insert(0, str(Path(__file__).parent))
+from langchain.schema import Document
+from langchain_core.retrievers import BaseRetriever
+from langchain_core.callbacks import CallbackManagerForRetrieverRun
+from langchain_community.retrievers import BM25Retriever
+from langchain.retrievers import EnsembleRetriever
+from langchain_chroma import Chroma
 
-from src.config import get_settings
-from src.chat import load_vectorstore, build_llm
-from src.hybrid_retriever import (
-    get_hybrid_retriever_from_vectorstore,
-    get_balanced_retriever,
-    get_keyword_focused_retriever,
-    get_semantic_focused_retriever
-)
-from langchain.chains import ConversationalRetrievalChain
-from langchain.memory import ConversationBufferMemory
-
-
-def example_1_basic_hybrid():
-    """
-    Example 1: Basic Hybrid Retriever with Equal Weights
-    """
-    print("\n" + "="*80)
-    print("EXAMPLE 1: Basic Hybrid Retriever (50/50 weights)")
-    print("="*80 + "\n")
-    
-    settings = get_settings()
-    
-    # Load vectorstore
-    print("Loading vectorstore...")
-    vectorstore = load_vectorstore(settings)
-    
-    # Create hybrid retriever with equal weights
-    print("\nCreating hybrid retriever...")
-    retriever = get_hybrid_retriever_from_vectorstore(
-        vectorstore=vectorstore,
-        bm25_weight=0.5,      # 50% BM25
-        dense_weight=0.5,     # 50% Dense
-        bm25_k=10,
-        dense_k=10,
-        use_reranker=False
+try:
+    from rank_bm25 import BM25Okapi
+except ImportError:
+    raise ImportError(
+        "rank-bm25 is required for hybrid retrieval. Install with: pip install rank-bm25"
     )
-    
-    # Test retrieval
-    print("\nTesting retrieval...")
-    test_query = "What offers are available?"
-    docs = retriever.invoke(test_query)
-    
-    print(f"\nQuery: '{test_query}'")
-    print(f"Retrieved {len(docs)} documents")
-    print(f"\nTop 3 results:")
-    for i, doc in enumerate(docs[:3], 1):
-        print(f"\n{i}. {doc.page_content[:200]}...")
-        print(f"   Source: {doc.metadata.get('source', 'N/A')}")
-    
-    # Show timing
-    if hasattr(retriever, 'timing_data') and retriever.timing_data:
-        print(f"\nTiming:")
-        for key, value in retriever.timing_data.items():
-            print(f"  {key}: {value:.2f}ms")
 
 
-def example_2_keyword_focused():
+def detect_language(text: str) -> str:
     """
-    Example 2: Keyword-Focused Retriever (70% BM25, 30% Dense)
+    Simple language detection based on character patterns.
+    
+    Returns:
+        'ar' for Arabic, 'fr' for French/Latin scripts
     """
-    print("\n" + "="*80)
-    print("EXAMPLE 2: Keyword-Focused Retriever (70/30 weights)")
-    print("="*80 + "\n")
+    # Arabic Unicode range: \u0600-\u06FF (Arabic), \u0750-\u077F (Arabic Supplement)
+    arabic_pattern = re.compile(r'[\u0600-\u06FF\u0750-\u077F]')
     
-    settings = get_settings()
-    vectorstore = load_vectorstore(settings)
+    # Count Arabic characters
+    arabic_chars = len(arabic_pattern.findall(text))
+    total_chars = len(text.replace(' ', ''))
     
-    # Create keyword-focused retriever
-    print("Creating keyword-focused retriever...")
-    retriever = get_hybrid_retriever_from_vectorstore(
-        vectorstore=vectorstore,
-        bm25_weight=0.7,      # 70% BM25 (keyword)
-        dense_weight=0.3,     # 30% Dense (semantic)
-        bm25_k=15,            # Get more from BM25
-        dense_k=10
-    )
+    if total_chars == 0:
+        return 'fr'  # Default to French
     
-    # Test with keyword-heavy query
-    test_query = "iPhone VPN discount"
-    docs = retriever.invoke(test_query)
+    arabic_ratio = arabic_chars / total_chars
     
-    print(f"\nQuery: '{test_query}'")
-    print(f"Retrieved {len(docs)} documents")
-    print(f"\nTop 3 results:")
-    for i, doc in enumerate(docs[:3], 1):
-        print(f"\n{i}. {doc.page_content[:200]}...")
+    # If more than 20% Arabic characters, consider it Arabic
+    if arabic_ratio > 0.2:
+        return 'ar'
+    return 'fr'
 
 
-def example_3_semantic_focused():
+def filter_documents_by_language(documents: List[Document], target_language: str) -> List[Document]:
     """
-    Example 3: Semantic-Focused Retriever (30% BM25, 70% Dense)
-    """
-    print("\n" + "="*80)
-    print("EXAMPLE 3: Semantic-Focused Retriever (30/70 weights)")
-    print("="*80 + "\n")
+    Filter documents to match the target language.
     
-    settings = get_settings()
-    vectorstore = load_vectorstore(settings)
-    
-    # Create semantic-focused retriever
-    print("Creating semantic-focused retriever...")
-    retriever = get_hybrid_retriever_from_vectorstore(
-        vectorstore=vectorstore,
-        bm25_weight=0.3,      # 30% BM25
-        dense_weight=0.7,     # 70% Dense (semantic)
-        bm25_k=10,
-        dense_k=15            # Get more from Dense
-    )
-    
-    # Test with semantic query
-    test_query = "How can I save money on my phone bill?"
-    docs = retriever.invoke(test_query)
-    
-    print(f"\nQuery: '{test_query}'")
-    print(f"Retrieved {len(docs)} documents")
-    print(f"\nTop 3 results:")
-    for i, doc in enumerate(docs[:3], 1):
-        print(f"\n{i}. {doc.page_content[:200]}...")
-
-
-def example_4_with_reranking():
-    """
-    Example 4: Hybrid Retriever with Reranking
-    """
-    print("\n" + "="*80)
-    print("EXAMPLE 4: Hybrid Retriever with Reranking")
-    print("="*80 + "\n")
-    
-    settings = get_settings()
-    vectorstore = load_vectorstore(settings)
-    
-    # Create hybrid retriever with reranking
-    print("Creating hybrid retriever with reranking...")
-    retriever = get_hybrid_retriever_from_vectorstore(
-        vectorstore=vectorstore,
-        bm25_weight=0.5,
-        dense_weight=0.5,
-        bm25_k=10,
-        dense_k=10,
-        use_reranker=True,    # Enable reranking
-        reranker_top_k=5      # Return top 5 after reranking
-    )
-    
-    # Test retrieval
-    test_query = "What are the best offers?"
-    docs = retriever.invoke(test_query)
-    
-    print(f"\nQuery: '{test_query}'")
-    print(f"Retrieved {len(docs)} documents (after reranking)")
-    print(f"\nTop 3 results:")
-    for i, doc in enumerate(docs[:3], 1):
-        print(f"\n{i}. {doc.page_content[:200]}...")
-    
-    # Show timing breakdown
-    if hasattr(retriever, 'timing_data') and retriever.timing_data:
-        print(f"\nTiming Breakdown:")
-        hybrid_time = retriever.timing_data.get('hybrid_search', 0)
-        rerank_time = retriever.timing_data.get('reranking', 0)
-        total_time = hybrid_time + rerank_time
+    Args:
+        documents: List of documents to filter
+        target_language: 'ar' for Arabic, 'fr' for French
         
-        print(f"  Hybrid Search: {hybrid_time:.2f}ms ({hybrid_time/total_time*100:.1f}%)")
-        print(f"  Reranking:     {rerank_time:.2f}ms ({rerank_time/total_time*100:.1f}%)")
-        print(f"  Total:         {total_time:.2f}ms")
+    Returns:
+        Filtered list of documents matching the target language
+    """
+    filtered = []
+    for doc in documents:
+        doc_language = detect_language(doc.page_content)
+        if doc_language == target_language:
+            filtered.append(doc)
+    
+    # If no documents match, return original (fallback)
+    if not filtered:
+        print(f"  ⚠️ No documents found for language '{target_language}', using all documents")
+        return documents
+    
+    return filtered
+
+# Import reranker if available
+try:
+    from src.reranker import BGEReranker
+    RERANKER_AVAILABLE = True
+except ImportError:
+    RERANKER_AVAILABLE = False
 
 
-def example_5_full_rag_chain():
+class HybridRetriever(BaseRetriever):
     """
-    Example 5: Full RAG Chain with Hybrid Retriever
+    Custom hybrid retriever that combines BM25 and dense retrieval
+    with timing tracking and optional reranking.
+    
+    Uses Reciprocal Rank Fusion (RRF) to merge results from both retrievers.
     """
-    print("\n" + "="*80)
-    print("EXAMPLE 5: Complete RAG Chain with Hybrid Retriever")
-    print("="*80 + "\n")
     
-    settings = get_settings()
+    bm25_retriever: BM25Retriever
+    dense_retriever: Any  # VectorStore retriever
+    bm25_weight: float = 0.5
+    dense_weight: float = 0.5
+    ensemble_retriever: Optional[EnsembleRetriever] = None
+    timing_data: Dict[str, float] = {}
+    reranker: Optional[Any] = None
+    reranker_top_k: int = 5
+    filter_by_language: bool = True  # Enable language filtering by default
     
-    # Load components
-    print("Loading components...")
-    vectorstore = load_vectorstore(settings)
-    llm = build_llm(settings)
+    class Config:
+        arbitrary_types_allowed = True
     
-    # Create hybrid retriever
-    print("Creating hybrid retriever...")
-    retriever = get_hybrid_retriever_from_vectorstore(
-        vectorstore=vectorstore,
-        bm25_weight=0.5,
-        dense_weight=0.5,
-        use_reranker=True,
-        reranker_top_k=5
-    )
-    
-    # Create memory
-    memory = ConversationBufferMemory(
-        memory_key="chat_history",
-        return_messages=True,
-        output_key="answer"
-    )
-    
-    # Build RAG chain
-    print("Building RAG chain...")
-    chain = ConversationalRetrievalChain.from_llm(
-        llm=llm,
-        retriever=retriever,
-        memory=memory,
-        return_source_documents=True,
-        verbose=False
-    )
-    
-    # Test conversation
-    print("\n" + "-"*80)
-    print("Starting conversation...")
-    print("-"*80 + "\n")
-    
-    queries = [
-        "What offers do you have?",
-        "Tell me about phone deals",
-        "What about VPN services?"
-    ]
-    
-    for query in queries:
-        print(f"\n👤 User: {query}")
-        result = chain.invoke({"question": query})
-        answer = result["answer"]
-        sources = result.get("source_documents", [])
-        
-        print(f"🤖 Assistant: {answer[:300]}...")
-        print(f"\n📚 Sources: {len(sources)} documents")
-        
-        # Show timing if available
-        if hasattr(retriever, 'timing_data') and retriever.timing_data:
-            total = sum(retriever.timing_data.values())
-            print(f"⏱️  Retrieval time: {total:.2f}ms")
-        
-        print("-"*80)
-
-
-def example_6_compare_weights():
-    """
-    Example 6: Compare Different Weight Configurations
-    """
-    print("\n" + "="*80)
-    print("EXAMPLE 6: Comparing Different Weight Configurations")
-    print("="*80 + "\n")
-    
-    settings = get_settings()
-    vectorstore = load_vectorstore(settings)
-    
-    test_query = "What are the best offers?"
-    
-    weight_configs = [
-        (0.7, 0.3, "Keyword-Focused"),
-        (0.5, 0.5, "Balanced"),
-        (0.3, 0.7, "Semantic-Focused")
-    ]
-    
-    print(f"Test Query: '{test_query}'\n")
-    
-    for bm25_w, dense_w, name in weight_configs:
-        print(f"\n{name} ({bm25_w*100:.0f}% BM25, {dense_w*100:.0f}% Dense)")
-        print("-" * 60)
-        
-        retriever = get_hybrid_retriever_from_vectorstore(
-            vectorstore=vectorstore,
-            bm25_weight=bm25_w,
-            dense_weight=dense_w,
-            bm25_k=10,
-            dense_k=10
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Create ensemble retriever with specified weights
+        self.ensemble_retriever = EnsembleRetriever(
+            retrievers=[self.bm25_retriever, self.dense_retriever],
+            weights=[self.bm25_weight, self.dense_weight]
         )
+    
+    def _get_relevant_documents(
+        self,
+        query: str,
+        *,
+        run_manager: Optional[CallbackManagerForRetrieverRun] = None
+    ) -> List[Document]:
+        """
+        Retrieve documents using hybrid search with timing.
         
-        docs = retriever.invoke(test_query)
+        Args:
+            query: Search query string
+            run_manager: Optional callback manager
+            
+        Returns:
+            List of relevant documents, ranked by combined score
+        """
+        # Reset timing data
+        self.timing_data = {}
         
-        print(f"Retrieved: {len(docs)} documents")
-        print(f"Top result: {docs[0].page_content[:150]}...")
+        # Step 1: BM25 retrieval
+        bm25_start = time.time()
+        bm25_docs = self.bm25_retriever.invoke(query)
+        self.timing_data["bm25_search"] = (time.time() - bm25_start) * 1000
         
-        if hasattr(retriever, 'timing_data') and retriever.timing_data:
-            total = sum(retriever.timing_data.values())
-            print(f"Time: {total:.2f}ms")
+        # Step 2: Dense retrieval
+        dense_start = time.time()
+        dense_docs = self.dense_retriever.invoke(query)
+        self.timing_data["dense_search"] = (time.time() - dense_start) * 1000
+        
+        # Step 3: Ensemble/Fusion (RRF)
+        fusion_start = time.time()
+        combined_docs = self.ensemble_retriever.invoke(query)
+        self.timing_data["rrf_fusion"] = (time.time() - fusion_start) * 1000
+        
+        # Step 4: Language filtering (filter documents to match query language)
+        if self.filter_by_language:
+            filter_start = time.time()
+            query_language = detect_language(query)
+            pre_filter_count = len(combined_docs)
+            combined_docs = filter_documents_by_language(combined_docs, query_language)
+            self.timing_data["language_filter"] = (time.time() - filter_start) * 1000
+            print(f"  🌐 Language filter: {query_language.upper()} ({pre_filter_count} → {len(combined_docs)} docs)")
+        
+        # Step 5: Optional reranking
+        if self.reranker is not None:
+            rerank_start = time.time()
+            combined_docs = self.reranker.rerank(query, combined_docs)[:self.reranker_top_k]
+            self.timing_data["reranking"] = (time.time() - rerank_start) * 1000
+        
+        # Calculate total hybrid search time
+        self.timing_data["hybrid_search"] = sum([
+            self.timing_data.get("bm25_search", 0),
+            self.timing_data.get("dense_search", 0),
+            self.timing_data.get("rrf_fusion", 0)
+        ])
+        
+        return combined_docs
 
 
-def example_7_using_presets():
+def get_hybrid_retriever(
+    documents: List[Document],
+    vectorstore: Chroma,
+    bm25_weight: float = 0.5,
+    dense_weight: float = 0.5,
+    bm25_k: int = 10,
+    dense_k: int = 10,
+    use_reranker: bool = False,
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_top_k: int = 5
+) -> HybridRetriever:
     """
-    Example 7: Using Preset Retriever Configurations
+    Create a hybrid retriever from documents and an existing vectorstore.
+    
+    Args:
+        documents: List of documents for BM25 indexing
+        vectorstore: Existing ChromaDB vectorstore for dense retrieval
+        bm25_weight: Weight for BM25 retriever (0.0-1.0)
+        dense_weight: Weight for dense retriever (0.0-1.0)
+        bm25_k: Number of documents to retrieve from BM25
+        dense_k: Number of documents to retrieve from dense search
+        use_reranker: Whether to apply reranking after fusion
+        reranker_model: Model name for reranker
+        reranker_top_k: Number of top documents after reranking
+        
+    Returns:
+        HybridRetriever instance
     """
-    print("\n" + "="*80)
-    print("EXAMPLE 7: Using Preset Configurations")
-    print("="*80 + "\n")
+    # Validate weights
+    if bm25_weight + dense_weight != 1.0:
+        # Normalize weights
+        total = bm25_weight + dense_weight
+        bm25_weight = bm25_weight / total
+        dense_weight = dense_weight / total
     
-    settings = get_settings()
-    vectorstore = load_vectorstore(settings)
+    # Create BM25 retriever from documents
+    bm25_retriever = BM25Retriever.from_documents(documents)
+    bm25_retriever.k = bm25_k
     
-    # Note: These presets require the original documents
-    # For this example, we'll extract them from vectorstore
-    print("Extracting documents from vectorstore...")
+    # Create dense retriever from vectorstore
+    dense_retriever = vectorstore.as_retriever(
+        search_kwargs={"k": dense_k}
+    )
+    
+    # Initialize reranker if requested
+    reranker = None
+    if use_reranker and RERANKER_AVAILABLE:
+        reranker = BGEReranker(
+            model_name=reranker_model,
+            top_k=reranker_top_k
+        )
+    
+    return HybridRetriever(
+        bm25_retriever=bm25_retriever,
+        dense_retriever=dense_retriever,
+        bm25_weight=bm25_weight,
+        dense_weight=dense_weight,
+        reranker=reranker,
+        reranker_top_k=reranker_top_k
+    )
+
+
+def get_hybrid_retriever_from_vectorstore(
+    vectorstore: Chroma,
+    bm25_weight: float = 0.5,
+    dense_weight: float = 0.5,
+    bm25_k: int = 10,
+    dense_k: int = 10,
+    use_reranker: bool = False,
+    reranker_model: str = "BAAI/bge-reranker-v2-m3",
+    reranker_top_k: int = 5
+) -> HybridRetriever:
+    """
+    Create a hybrid retriever directly from a vectorstore.
+    Extracts documents from the vectorstore for BM25 indexing.
+    
+    Args:
+        vectorstore: ChromaDB vectorstore
+        bm25_weight: Weight for BM25 retriever (0.0-1.0)
+        dense_weight: Weight for dense retriever (0.0-1.0)
+        bm25_k: Number of documents to retrieve from BM25
+        dense_k: Number of documents to retrieve from dense search
+        use_reranker: Whether to apply reranking after fusion
+        reranker_model: Model name for reranker
+        reranker_top_k: Number of top documents after reranking
+        
+    Returns:
+        HybridRetriever instance
+    """
+    # Extract documents from vectorstore
+    print("  [Hybrid] Extracting documents from vectorstore for BM25 indexing...")
+    extraction_start = time.time()
+    
     collection = vectorstore._collection
     results = collection.get(include=["documents", "metadatas"])
     
-    from langchain.schema import Document
     documents = []
     for doc_text, metadata in zip(results["documents"], results["metadatas"]):
-        documents.append(Document(page_content=doc_text, metadata=metadata or {}))
+        documents.append(Document(
+            page_content=doc_text,
+            metadata=metadata or {}
+        ))
     
-    print(f"Extracted {len(documents)} documents\n")
+    extraction_time = (time.time() - extraction_start) * 1000
+    print(f"       ✓ Extracted {len(documents)} documents in {extraction_time:.2f}ms")
     
-    # Test each preset
-    presets = [
-        ("Balanced", get_balanced_retriever),
-        ("Keyword-Focused", get_keyword_focused_retriever),
-        ("Semantic-Focused", get_semantic_focused_retriever)
-    ]
-    
-    test_query = "phone offers"
-    
-    for name, preset_func in presets:
-        print(f"\n{name} Preset")
-        print("-" * 60)
-        
-        retriever = preset_func(documents, vectorstore)
-        docs = retriever.invoke(test_query)
-        
-        print(f"Query: '{test_query}'")
-        print(f"Retrieved: {len(docs)} documents")
-        print(f"Top result: {docs[0].page_content[:150]}...")
+    return get_hybrid_retriever(
+        documents=documents,
+        vectorstore=vectorstore,
+        bm25_weight=bm25_weight,
+        dense_weight=dense_weight,
+        bm25_k=bm25_k,
+        dense_k=dense_k,
+        use_reranker=use_reranker,
+        reranker_model=reranker_model,
+        reranker_top_k=reranker_top_k
+    )
 
 
-def main():
-    """Run all examples"""
-    print("\n" + "="*80)
-    print("HYBRID RETRIEVER EXAMPLES")
-    print("="*80)
-    
-    examples = [
-        ("Basic Hybrid (50/50)", example_1_basic_hybrid),
-        ("Keyword-Focused (70/30)", example_2_keyword_focused),
-        ("Semantic-Focused (30/70)", example_3_semantic_focused),
-        ("With Reranking", example_4_with_reranking),
-        ("Full RAG Chain", example_5_full_rag_chain),
-        ("Compare Weights", example_6_compare_weights),
-        ("Using Presets", example_7_using_presets)
-    ]
-    
-    print("\nAvailable examples:")
-    for i, (name, _) in enumerate(examples, 1):
-        print(f"  {i}. {name}")
-    
-    print("\nRunning all examples...")
-    print("="*80 + "\n")
-    
-    try:
-        for name, example_func in examples:
-            try:
-                example_func()
-            except Exception as e:
-                print(f"\n❌ Error in {name}: {str(e)}")
-                import traceback
-                traceback.print_exc()
-        
-        print("\n" + "="*80)
-        print("✅ All examples completed!")
-        print("="*80 + "\n")
-    
-    except KeyboardInterrupt:
-        print("\n\n⚠️  Examples interrupted by user")
+# Preset configurations for common use cases
+
+def get_balanced_retriever(
+    documents: List[Document],
+    vectorstore: Chroma,
+    use_reranker: bool = False
+) -> HybridRetriever:
+    """Balanced 50/50 hybrid retriever."""
+    return get_hybrid_retriever(
+        documents=documents,
+        vectorstore=vectorstore,
+        bm25_weight=0.5,
+        dense_weight=0.5,
+        use_reranker=use_reranker
+    )
 
 
-if __name__ == "__main__":
-    # Run specific example or all
-    import sys
-    
-    if len(sys.argv) > 1:
-        example_num = int(sys.argv[1])
-        examples = [
-            example_1_basic_hybrid,
-            example_2_keyword_focused,
-            example_3_semantic_focused,
-            example_4_with_reranking,
-            example_5_full_rag_chain,
-            example_6_compare_weights,
-            example_7_using_presets
-        ]
-        
-        if 1 <= example_num <= len(examples):
-            print(f"\nRunning Example {example_num}...")
-            examples[example_num - 1]()
-        else:
-            print(f"Invalid example number. Choose 1-{len(examples)}")
-    else:
-        # Run all examples
-        main()
+def get_keyword_focused_retriever(
+    documents: List[Document],
+    vectorstore: Chroma,
+    use_reranker: bool = False
+) -> HybridRetriever:
+    """Keyword-focused retriever (70% BM25, 30% Dense)."""
+    return get_hybrid_retriever(
+        documents=documents,
+        vectorstore=vectorstore,
+        bm25_weight=0.7,
+        dense_weight=0.3,
+        use_reranker=use_reranker
+    )
+
+
+def get_semantic_focused_retriever(
+    documents: List[Document],
+    vectorstore: Chroma,
+    use_reranker: bool = False
+) -> HybridRetriever:
+    """Semantic-focused retriever (30% BM25, 70% Dense)."""
+    return get_hybrid_retriever(
+        documents=documents,
+        vectorstore=vectorstore,
+        bm25_weight=0.3,
+        dense_weight=0.7,
+        use_reranker=use_reranker
+    )

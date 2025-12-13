@@ -1,0 +1,13 @@
+{
+  "equipe": "transformers+1",
+  "reponses": {
+    "categorie_01": {
+      "1": "D'après les informations fournies, les offres disponibles pour les étudiants comprennent :\n\n1.  **Offres Packs Éducatifs (pour les cycles Moyen et Secondaire, branche scientifique) :**\n    *   **Pack MPS :** Offre trimestrielle pour les matières Maths, Physique, Sciences.\n    *   **Pack AFA :** Offre trimestrielle pour les matières Arabe, Français, Anglais.\n\n2.  **Offre 4G LTE sans engagement :** Spécifiquement pour les étudiants résidant en cité universitaire.\n\n3.  **Accès à la plateforme « DOROUSCOM » :** Une plateforme de soutien pédagogique en ligne offrant plus de 2000 vidéos éducatives, destinée entre autres aux élèves et étudiants.",
+      "2": "Selon le contexte fourni, le prix de l'offre 4G LTE sans engagement est de **7 500 DA** pour tout nouveau client résidentiel, y compris les étudiants. Cette offre comprend un modem offert, 1 To de data avec un débit illimité, une validité de 90 jours et des appels illimités vers le réseau Algérie Télécom."
+    },
+    "categorie_02": {
+      "1": "Pour activer une offre internet chez Algérie Télécom, les canaux disponibles selon le contexte fourni sont :\n\n*   **Espace client** sur le site web d'Algérie Télécom.\n*   L'application **My Idoom**.\n\nCes canaux sont spécifiquement mentionnés pour l'activation de l'offre WEEK-END BOOST. Pour d'autres offres, il est recommandé de se rendre dans une agence commerciale ou de consulter le site officiel d'Algérie Télécom pour connaître les procédures d'activation exactes.",
+      "2": "En tant qu'étudiant résidant en cité universitaire, vous pouvez bénéficier de la nouvelle offre Idoom 4G LTE sans engagement. Ses avantages sont les suivants :\n\n*   **Un modem/CPE offert**\n*   **Un volume de 1 To (1000 Go) avec un débit illimité**\n*   **Une validité de 90 jours**\n*   **Appels illimités vers le réseau Algérie Télécom (AT)**\n*   **Tarif : 7 500 DA TTC**\n\nDe plus, il est possible de recharger et de cumuler le volume de données avant la fin de la période de validité de 90 jours."
+    }
+  }
+}

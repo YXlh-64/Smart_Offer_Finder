@@ -1,6 +1,7 @@
 import os
 import json
 import sys
+import re
 from pathlib import Path
 from typing import List
 from dotenv import load_dotenv
@@ -14,83 +15,184 @@ from src.config import get_settings
 
 load_dotenv()
 
-# Path to your data
-JSON_DATA_PATH = Path("data/raw/data.json")
+# Define Paths for both data sources
+DATA_PATH_1 = Path("data/raw/data.json")
+DATA_PATH_2 = Path("data/raw/data2.json")
 
-def build_vectorstore():
-    settings = get_settings()
+
+def normalize_file_path(raw_path: str) -> str:
+    """
+    Normalize file paths for cross-platform compatibility.
     
-    # 1. Load Data
-    print(f"📂 Loading data from {JSON_DATA_PATH}...")
-    if not JSON_DATA_PATH.exists():
-        print("❌ File not found.")
-        return
+    - Converts backslashes to forward slashes
+    - Removes leading ./ or ./
+    - Removes absolute drive letters (C:/, D:/)
+    - Returns a clean relative path from project root
+    """
+    if not raw_path:
+        return ""
+    
+    # Convert backslashes to forward slashes
+    path = raw_path.replace("\\", "/")
+    
+    # Remove leading ./ or ./
+    path = re.sub(r'^\.\/+', '', path)
+    
+    # Remove Windows drive letters (e.g., C:/, D:/)
+    path = re.sub(r'^[A-Za-z]:\/+', '', path)
+    
+    # Remove any double slashes
+    path = re.sub(r'\/+', '/', path)
+    
+    return path
 
-    with open(JSON_DATA_PATH, "r", encoding="utf-8") as f:
+def process_standard_data(file_path: Path) -> List[Document]:
+    """
+    Process data.json which has a standard 'content' and 'metadata' structure.
+    """
+    print(f"📂 Loading standard data from {file_path}...")
+    if not file_path.exists():
+        print(f"⚠️  File {file_path} not found. Skipping.")
+        return []
+
+    with open(file_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
     docs = []
     for entry in data:
         content = entry.get("content", "")
         
-        # --- CRITICAL FIX 1: Remove None values from Metadata ---
-        # ChromaDB crashes if metadata contains None/Null. We filter them out here.
+        # Filter None values from metadata
         raw_metadata = entry.get("metadata", {})
         metadata = {k: v for k, v in raw_metadata.items() if v is not None}
         
-        # Store original text in metadata for display in the UI
+        # Store original text
         metadata["original_text"] = content
         
-        # Ensure 'source' exists for citations
+        # Ensure 'source' exists
         if "source_filename" in metadata:
             metadata["source"] = metadata["source_filename"]
+        else:
+            metadata["source"] = file_path.name
         
-        # --- CRITICAL FIX 2: Add metadata prefix for better retrieval ---
-        # Include key metadata in the content that gets embedded
-        # This helps with retrieval of specific establishments, document types, etc.
+        # Normalize and store file_path for download links
+        raw_file_path = raw_metadata.get("file_path", "")
+        if raw_file_path:
+            metadata["file_path"] = normalize_file_path(raw_file_path)
+        else:
+            metadata["file_path"] = ""
+
+        # Create metadata prefix for better retrieval context
         metadata_prefix = []
-        
-        # Add document title if available
         if "document_title" in metadata and metadata["document_title"]:
             metadata_prefix.append(f"Titre: {metadata['document_title']}")
-        
-        # Add source filename if available
         if "source_filename" in metadata and metadata["source_filename"]:
             metadata_prefix.append(f"Source: {metadata['source_filename']}")
         
-        # Add document type if available
-        if "document_type" in metadata and metadata["document_type"]:
-            metadata_prefix.append(f"Type: {metadata['document_type']}")
-        
-        # Combine metadata prefix with content
         if metadata_prefix:
             metadata_text = " | ".join(metadata_prefix)
             enriched_content = f"{metadata_text}\n\n{content}"
         else:
             enriched_content = content
-        
-        # --- CRITICAL FIX 3: Add "passage: " prefix for E5 model ---
-        # The E5 model requires this prefix to understand the text is a document to be searched
-        model_content = f"passage: {enriched_content}"
 
+        # Add "passage: " prefix for E5 model
+        model_content = f"passage: {enriched_content}"
+        
+        docs.append(Document(page_content=model_content, metadata=metadata))
+    
+    print(f"   ✓ Processed {len(docs)} documents from {file_path.name}")
+    return docs
+
+def process_procedural_data(file_path: Path) -> List[Document]:
+    """
+    Process data2.json which has 'Process_Title' and 'Steps'.
+    We format this into a readable guide for the LLM.
+    """
+    print(f"📂 Loading procedural data from {file_path}...")
+    if not file_path.exists():
+        print(f"⚠️  File {file_path} not found. Skipping.")
+        return []
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    docs = []
+    for entry in data:
+        process_title = entry.get("Process_Title", "Untitled Process")
+        steps_list = entry.get("Steps", [])
+        
+        # Format the steps into a readable string
+        formatted_steps = []
+        for idx, step_obj in enumerate(steps_list, 1):
+            # Extract the value from the dictionary (e.g., {"step_1": "text"})
+            step_text = list(step_obj.values())[0] if step_obj else ""
+            formatted_steps.append(f"{idx}. {step_text}")
+        
+        steps_content = "\n".join(formatted_steps)
+        
+        # Create a rich content block
+        # We explicitly label it as a Guide/Process for the LLM
+        full_content = (
+            f"Processus: {process_title}\n"
+            f"Type: Guide Opérationnel\n"
+            f"Étapes:\n{steps_content}"
+        )
+        
+        # Get and normalize file path from entry
+        raw_file_path = entry.get("path", "")
+        normalized_path = normalize_file_path(raw_file_path) if raw_file_path else ""
+        
+        # Create Metadata
+        metadata = {
+            "source": file_path.name,
+            "title": process_title,
+            "type": "procedure",
+            "original_text": full_content,
+            "file_path": normalized_path
+        }
+
+        # Add E5 prefix
+        model_content = f"passage: {full_content}"
+        
         docs.append(Document(page_content=model_content, metadata=metadata))
 
-    print(f"   Processed {len(docs)} documents.")
+    print(f"   ✓ Processed {len(docs)} documents from {file_path.name}")
+    return docs
+
+def build_vectorstore():
+    settings = get_settings()
+    
+    # 1. Load and Combine Data
+    all_docs = []
+    
+    # Load data.json
+    all_docs.extend(process_standard_data(DATA_PATH_1))
+    
+    # Load data2.json
+    all_docs.extend(process_procedural_data(DATA_PATH_2))
+
+    if not all_docs:
+        print("❌ No documents found to ingest.")
+        return
+
+    print(f"\n📦 Total documents to ingest: {len(all_docs)}")
 
     # 2. Split Text
-    # Use chunk size from settings (configurable via .env)
     print(f"📝 Using chunk_size={settings.chunk_size}, chunk_overlap={settings.chunk_overlap}")
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=settings.chunk_size, 
         chunk_overlap=settings.chunk_overlap,
         separators=["\n\n", "\n", " ", ""]
     )
-    chunks = splitter.split_documents(docs)
+    
+    chunks = splitter.split_documents(all_docs)
     print(f"✂️  Split into {len(chunks)} text chunks.")
 
-    # 3. Initialize Fast GPU Embeddings
-    print("⏳ Initializing GPU Embeddings (multilingual-e5-base)...")
-    model_kwargs = {'device': 'cuda'}
+    # 3. Initialize Embeddings (use CUDA if available, otherwise CPU)
+    import torch
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"⏳ Initializing Embeddings (multilingual-e5-base) on {device}...")
+    model_kwargs = {'device': device}
     encode_kwargs = {'normalize_embeddings': True}
     
     embeddings = SentenceTransformerEmbeddings(
@@ -99,14 +201,9 @@ def build_vectorstore():
         encode_kwargs=encode_kwargs
     )
 
-    # 4. Create ChromaDB
+    # 4. Create/Update ChromaDB
     print(f"🚀 Indexing to {settings.chroma_persist_directory}...")
     
-    # Ensure fresh start: Clear old DB if needed (Optional, but safer if schema changed)
-    # import shutil
-    # if os.path.exists(settings.chroma_persist_directory):
-    #     shutil.rmtree(settings.chroma_persist_directory)
-
     chroma_client = chromadb.PersistentClient(
         path=settings.chroma_persist_directory,
         settings=ChromaSettings(anonymized_telemetry=False)
@@ -118,7 +215,7 @@ def build_vectorstore():
         collection_name=settings.chroma_collection_name,
         client=chroma_client
     )
-    print("✅ Indexing Complete! You can now run chat.py")
+    print("✅ Indexing Complete! Both datasets are now in the same database.")
 
 if __name__ == "__main__":
     build_vectorstore()

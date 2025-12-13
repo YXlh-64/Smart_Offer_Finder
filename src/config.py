@@ -30,6 +30,21 @@ class Settings(BaseSettings):
     reranker_top_k: int = Field(default=4, alias="RERANKER_TOP_K")
     initial_retrieval_k: int = Field(default=20, alias="INITIAL_RETRIEVAL_K")
 
+    # Hybrid Retriever Configuration
+    use_hybrid_search: bool = Field(default=True, alias="USE_HYBRID_SEARCH")
+    hybrid_bm25_weight: float = Field(default=0.4, alias="HYBRID_BM25_WEIGHT")
+    hybrid_dense_weight: float = Field(default=0.6, alias="HYBRID_DENSE_WEIGHT")
+    hybrid_bm25_k: int = Field(default=15, alias="HYBRID_BM25_K")
+    hybrid_dense_k: int = Field(default=15, alias="HYBRID_DENSE_K")
+
+    # Semantic Cache Configuration
+    use_semantic_cache: bool = Field(default=False, alias="USE_SEMANTIC_CACHE")
+    redis_host: str = Field(default="localhost", alias="REDIS_HOST")
+    redis_port: int = Field(default=6379, alias="REDIS_PORT")
+    redis_password: Optional[str] = Field(default=None, alias="REDIS_PASSWORD")
+    cache_similarity_threshold: float = Field(default=0.95, alias="CACHE_SIMILARITY_THRESHOLD")
+    cache_ttl_seconds: int = Field(default=86400, alias="CACHE_TTL_SECONDS")
+
 
     class Config:
         env_file = ".env"

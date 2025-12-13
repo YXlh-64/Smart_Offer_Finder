@@ -1,0 +1,108 @@
+{
+  "equipe": "transformers+1",
+  "question": {
+    "categorie_01_comparaison_inter_conventions": {
+      "1": "Comparez le tarif préférentiel de l'offre VDSL 100 Mbps entre la convention de l'Établissement A (Version 5) et celle de l'Établissement B (Version 6). Quel établissement offre le meilleur tarif et les retraités sont-ils éligibles dans les deux cas ?",
+      "2": "فيما يخص عرض Idoom Fibre بتدفق 1.5 جيغابت، ما هو الفارق في السعر بين موظفي المؤسسة C (النسخة 6) وموظفي المؤسسة T (النسخة 5)؟ وهل يُطلب من موظفي المؤسسة C تقديم البطاقة المهنية؟",
+      "3": "Pour un employé actif, quelle est la différence de prix pour l'offre ADSL 20 Mbps entre la convention de l'Établissement K et celle de l'Établissement Q ?"
+    },
+    "categorie_02_logique_conditionnelle_et_eligibilite": {
+      "1": "Je suis un client 'Moohtarif'. Si je présente une attestation bancaire prouvant l'acquisition d'un TPE, quel est l'avantage spécifique sur les frais d'installation et le modem ONT par rapport à la procédure standard, et la durée d'engagement minimale change-t-elle ?",
+      "2": "بصفتي زبونًا أرغب في الاشتراك في عرض 'Idoom Gamers Locataire'، هل أنا ملزم بتقديم إثبات إقامة؟ وما هي التكلفة الشهرية المطبقة على القيود الخاصة بالمكالمات الدولية في هذا العرض؟",
+      "3": "Selon la convention de l'Établissement B (Version 6), un retraité peut-il bénéficier d'un 'deuxième accès' Fibre à tarif réduit comme le personnel actif ? Si non, quel est le tarif appliqué pour son premier accès à 20 Mbps ADSL ?",
+      "4": "Si je souscris à la nouvelle offre 'Idoom 4G LTE Sans Engagement' à 7500 DA, est-ce que je peux cumuler le volume internet restant si je recharge avant l'expiration des 90 jours ?"
+    },
+    "categorie_03_procedures_techniques_ngbss": {
+      "1": "Selon le guide NGBSS pour la 'Vente par Lot', après l'importation du fichier contenant les numéros de série, quelle est l'étape de vérification immédiate avant de saisir les informations du client ?",
+      "2": "Lors d'une opération de 'Retour ressource' sur NGBSS pour un non-client, si le système génère un remboursement, quelles sont les étapes exactes pour finaliser le paiement et ensuite changer l'état de la ressource dans l'inventaire de 'Rendu' à 'Normal' ?",
+      "3": "Dans la procédure de 'Création enquête PSTN', si le client n'est pas présent au moment de la signature du contrat, quelle action spécifique faut-il effectuer après avoir cliqué sur 'Payer maintenant' ?",
+      "4": "Quelle est la mention exacte à saisir dans le champ 'Description' lors de l'encaissement d'une facture payée au niveau d'un bureau de poste sur NGBSS ?"
+    },
+    "categorie_04_calculs_et_specifications_produits": {
+      "1": "Si je suis un employé actif de l'Établissement W (Version 5) et que je souscris à Idoom Fibre 1.5 Gbps tout en achetant un Cache Modem 'Modèle 4 (18mm) Grand format', quel sera le coût total (premier mois d'abonnement + prix du cache) ?",
+      "2": "بناءً على قانون المالية 2025، إذا قمت بدفع فاتورة قيمتها 45,000 دج نقدًا في الوكالة، ما هي نسبة حق الطابع المطبقة؟ وهل تتغير هذه النسبة إذا دفعت باستخدام تطبيق BaridiMob؟",
+      "3": "Combien de jours sont déduits de mon abonnement Idoom Fibre si mon débit initial est de 120 Mbps et que j'active l'offre 'Weekend Boost' pour passer à 1.5 Gbps ? Cette offre est-elle disponible pour les clients 'Idoom Gamer' ?",
+      "4": "Concernant la plateforme ClassaTeck, quel est le nombre maximum d'élèves autorisés dans le 'Pack Business' par rapport au 'Pack Professionnel', et quel est le coût annuel du Pack Business ?"
+    },
+    "categorie_05_mises_a_jour_et_versions": {
+      "1": "Dans la mise à jour de l'offre 'Locataire Idoom Fibre' (Version 4), quel est le nouveau tarif pour le palier qui remplace l'ancien débit de 30 Mbps, et le débit d'upload représente quel pourcentage du téléchargement ?",
+      "2": "هل يتم تحويل المشتركين الحاليين في عرض 'Idoom Fibre Gamers' تلقائيًا إلى التدفقات الجديدة في تحديث جويلية 2025 (النسخة 5)؟ وما هو السعر الجديد لتدفق 1.5 Gbps؟",
+      "3": "Selon la convention de l'Établissement C (Version 6), le tarif de l'offre Idoom Fibre 1 Gbps a-t-il changé par rapport aux versions précédentes, et quel est le taux de remise exact appliqué à ce palier ?"
+    },
+    "categorie_06_materiel_et_depot_vente": {
+      "1": "Je possède un ancien modem ONT Wi-Fi 5. Si je veux acquérir le nouveau modem ONT XGS-PON Wi-Fi 6, quelles sont les trois conditions techniques (débit et infrastructure) que je dois remplir selon l'argumentaire du 04/11/2025 ?",
+      "2": "فيما يخص عرض الهواتف الذكية من الشريك SARL SACOMI، ما هي مدة الضمان لهاتف ZTE Blade A55، وماذا يجب على المستشار التجاري فعله إذا ظهر عطل في الجهاز فور فتح العلبة (Panne au déballage)؟",
+      "3": "La Twin Box est-elle compatible avec une carte SIM 4G LTE d'Algérie Télécom ? Si je l'utilise pour accéder à l'offre TOD 4K, combien d'écrans simultanés sont autorisés ?"
+    },
+    "categorie_07_analyse_croisee_offres_et_avantages": {
+      "1": "Si je suis un client 'Idoom Fibre Gamers' (Version 5) avec un débit de 300 Mbps, mon upload est-il suffisant pour bénéficier pleinement des avantages de l'offre 'Weekend Boost' si je décide de passer temporairement à 1 Gbps, ou suis-je exclu de cette offre ?",
+      "2": "Comparez le bonus de jours de connexion offert pour un paiement électronique de 6 mois entre l'offre 'Idoom ADSL' standard et l'offre 'Moohtarif'. Y a-t-il une différence dans le nombre de jours accordés ?",
+      "3": "في عرض 'Idoom 4G LTE بدون التزام' الجديد، هل يتم احتساب المكالمات نحو شبكة اتصالات الجزائر من ضمن رصيد 1 تيرابايت، أم أنها غير محدودة بشكل مستقل؟"
+    },
+    "categorie_08_procedures_administratives_et_juridiques": {
+      "1": "Selon la convention de l'Établissement P (Version 1), quel est le tarif exact du modem ONT Wi-Fi 6 pour un cadre supérieur par rapport à un salarié classé en dessous de la catégorie 'A' ?",
+      "2": "Dans le cadre de la loi de finance 2025, si je paie une facture de 30 001 DA en espèces, quel est le montant exact du droit de timbre, et comment ce montant changerait-il si la facture était de 30 000 DA ?",
+      "3": "Pour un client 'Moohtarif', si je souscris à une offre Idoom Fibre de 20 Mbps, ai-je le droit d'acheter le logiciel de facturation 'Fatoura' à tarif préférentiel, ou ce privilège est-il réservé aux débits supérieurs ?"
+    },
+    "categorie_09_depannage_et_support_technique": {
+      "1": "Selon la procédure de commercialisation des kits de branchement, si un client refuse d'acheter le kit de remplacement dans les 48 heures après le diagnostic technique, quelle est l'action précise que l'orienteur doit effectuer sur le ticket de dérangement ?",
+      "2": "ما هي الخطوات الدقيقة التي يجب على الزبون اتباعها لتقديم شكوى بخصوص 'Cache Modem' معيب تم شراؤه عبر Idoom Market، وما هي وسيلة الاتصال المحددة لذلك؟",
+      "3": "Si un client rencontre un problème technique avec la plateforme 'Moalim', doit-il contacter le 12 ou existe-t-il un numéro de support spécifique partenaire à appeler ?"
+    },
+    "categorie_10_gestion_offres_specifiques": {
+      "1": "Concernant l'offre 'Idoom Medium Business', si je choisis le débit de 200 Mbps, est-ce que l'adresse IP fixe est incluse gratuitement dans le forfait mensuel de 16 000 DA, ou est-ce une option payante comme dans l'offre 'Moohtarif' ?",
+      "2": "في عرض 'التوصية' (Parrainage)، إذا كان الموصي يملك اشتراك Idoom Fibre بتدفق 1.5 Gbps، ما هي المكافأة التي يحصل عليها بالضبط عند توصية زبون جديد، وهل يحصل على زيادة في التدفق؟",
+      "3": "Pour l'offre 'Moohtarif Locataire', le coût mensuel de 50 DA pour la restriction des appels internationaux est-il optionnel ou inclus d'office dans le forfait ?"
+    },
+    "categorie_11_ngbss_avance": {
+      "1": "Dans NGBSS, lors de la création d'un nouveau pack IDOOM Fibre, à quelle étape précise doit-on effectuer la 'synchronisation avec ONT' et sous quel onglet cela se trouve-t-il ?",
+      "2": "Quelle est la différence procédurale dans NGBSS entre une 'Réactivation Abonné 4G LTE' et un 'Rétablissement' standard après suspension ?",
+      "3": "Lors de l'enregistrement d'une facture complémentaire TVA 2% sur NGBSS, quel 'Cycle de facturation' doit-on sélectionner et quel commentaire précis est obligatoire dans la description ?"
+    },
+    "categorie_12_strategies_marketing_et_ventes": {
+      "1": "Quels sont les trois arguments clés à mettre en avant pour promouvoir l'offre 'Idoom Fibre Gamers' auprès des jeunes professionnels, en insistant sur les avantages par rapport à l'offre standard Idoom Fibre ?",
+      "2": "ما هي الاستراتيجية التسويقية المحددة التي يجب اتباعها لتشجيع العملاء على الاشتراك في عرض 'Idoom 4G LTE بدون التزام' بدلاً من العروض التقليدية، مع التركيز على المرونة والتكلفة؟",
+      "3": "Pour maximiser les ventes de l'offre 'Moohtarif', quels sont les segments de clientèle spécifiques à cibler et quels canaux de communication sont les plus efficaces selon les dernières analyses de marché ?"
+    },
+    "categorie_13_innovations_et_tendances_technologiques": {
+      "1": "Avec l'introduction de la technologie XGS-PON dans les nouveaux modems ONT, quels sont les trois principaux avantages en termes de performance et de fiabilité par rapport à la technologie GPON utilisée précédemment ?",
+      "2": "كيف تؤثر تقنيات الذكاء الاصطناعي والتعلم الآلي على تحسين جودة خدمة الإنترنت في عروض Idoom Fibre، وما هي الابتكارات المتوقعة في هذا المجال خلال السنوات القادمة؟",
+      "3": "En quoi l'intégration de la 5G dans les offres Idoom 4G LTE peut-elle transformer l'expérience utilisateur, et quelles sont les implications pour le développement futur des services Internet à domicile ?"
+    },
+    "categorie_14_impact_reglementaire_et_conformite": {
+      "1": "Comment la nouvelle réglementation sur la protection des données personnelles affecte-t-elle la gestion des informations clients dans les offres Idoom, et quelles mesures spécifiques ont été mises en place pour assurer la conformité ?",
+      "2": "ما هي التعديلات التنظيمية الأخيرة التي تؤثر على تقديم خدمات الإنترنت في الجزائر، وكيف تتوافق عروض Idoom مع هذه المتطلبات لضمان الامتثال القانوني؟",
+      "3": "Quels sont les impacts des directives gouvernementales sur la tarification des services Internet à haut débit, et comment cela influence-t-il les stratégies de prix pour les différentes offres Idoom ?"
+    },
+    "categorie_15_experiences_clients_et_temoignages": {
+      "1": "Quels sont les retours les plus fréquents des clients concernant l'offre 'Idoom Fibre Gamers', et comment ces témoignages ont-ils influencé les améliorations apportées au service ?",
+      "2": "كيف تؤثر تجارب العملاء الإيجابية في تعزيز سمعة عروض Idoom على وسائل التواصل الاجتماعي، وما هي القصص الناجحة التي يمكن مشاركتها لجذب المزيد من المشتركين؟",
+      "3": "Comment les avis des clients sur la plateforme ClassaTeck ont-ils contribué à l'évolution des fonctionnalités proposées, et quels aspects sont le plus appréciés par les utilisateurs ?"
+    },
+    "categorie_16_soutenabilite_et_initiatives_ecologiques": {
+      "1": "Quelles sont les initiatives spécifiques mises en place par Algérie Télécom pour réduire l'empreinte carbone de ses services Idoom, notamment en ce qui concerne la gestion des déchets électroniques liés aux modems et équipements ?",
+      "2": "ما هي الإجراءات التي تتخذها عروض Idoom لتعزيز الاستدامة البيئية، مثل استخدام الطاقة المتجددة في مراكز البيانات أو تشجيع إعادة التدوير بين العملاء؟",
+      "3": "Comment Algérie Télécom intègre-t-elle des pratiques durables dans le développement de nouvelles technologies pour ses offres Internet, et quels sont les objectifs à long terme en matière de responsabilité environnementale ?"
+    },
+    "categorie_17_securite_et_protection_des_donnees": {
+      "1": "Quelles sont les mesures de sécurité spécifiques mises en œuvre pour protéger les données des clients abonnés aux offres Idoom, notamment en ce qui concerne la prévention des cyberattaques et la sécurisation des transactions en ligne ?",
+      "2": "كيف تضمن عروض Idoom حماية خصوصية المستخدمين أثناء استخدام الإنترنت، وما هي البروتوكولات المتبعة للتعامل مع محاولات الاختراق أو الوصول غير المصرح به إلى البيانات؟",
+      "3": "Quels sont les protocoles de réponse en cas de violation de données chez Algérie Télécom, et comment les clients sont-ils informés et assistés en cas d'incident de sécurité affectant leurs informations personnelles ?"
+    },
+    "categorie_18_integration_et_compatibilite_technologique": {
+      "1": "Comment les nouveaux modems ONT XGS-PON sont-ils compatibles avec les infrastructures réseau existantes d'Algérie Télécom, et quelles sont les étapes nécessaires pour assurer une transition fluide pour les clients actuels ?",
+      "2": "ما هي التحديات التقنية التي قد تواجه العملاء عند دمج عروض Idoom مع الأجهزة الذكية المنزلية، وكيف يتم ضمان التوافق بين هذه الأجهزة وخدمات الإنترنت المقدمة؟",
+      "3": "Quels sont les protocoles de test et de validation utilisés pour garantir que les nouvelles offres Idoom fonctionnent de manière optimale avec une variété de dispositifs clients, tels que les routeurs tiers et les appareils mobiles ?"
+    },
+    "categorie_19_evolution_du_marche_et_concurrence": {
+      "1": "Comment Algérie Télécom analyse-t-elle les tendances du marché des services Internet pour adapter ses offres Idoom face à la concurrence croissante des fournisseurs privés, et quelles stratégies sont mises en place pour maintenir sa position de leader ?",
+      "2": "كيف تؤثر المنافسة المتزايدة في سوق خدمات الإنترنت على تطوير عروض Idoom، وما هي الخطط المستقبلية لتعزيز جاذبية هذه العروض للمشتركين الجدد والحاليين؟",
+      "3": "Quels sont les indicateurs clés de performance utilisés par Algérie Télécom pour évaluer le succès de ses offres Idoom par rapport à celles de ses concurrents, et comment ces données influencent-elles les décisions stratégiques ?"
+    },
+    "categorie_20_perspectives_futures_et_innovations": {
+      "1": "Quelles sont les innovations technologiques prévues par Algérie Télécom pour les prochaines versions des offres Idoom, notamment en ce qui concerne l'intégration de la 5G et les services basés sur le cloud ?",
+      "2": "ما هي الرؤى المستقبلية لعروض Idoom في ظل التطورات التكنولوجية السريعة، وكيف تخطط الشركة للاستفادة من هذه الابتكارات لتحسين تجربة العملاء؟",
+      "3": "Comment Algérie Télécom envisage-t-elle d'adapter ses offres Idoom aux évolutions des besoins des consommateurs, notamment en matière de connectivité intelligente et d'Internet des objets (IoT) ?"
+    }
+}
+}

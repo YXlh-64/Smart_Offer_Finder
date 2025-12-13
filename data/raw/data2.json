@@ -1,0 +1,482 @@
+[
+  {
+    "Process_Title": "Encaissement des factures payées au niveau de bureau de Poste",
+    "path" : "data\\Guide NGBSS\\Encaissement des factures payées au niveau de bureau de poste.pdf",
+    "Steps": [
+      {
+        "step_1": "Cliquer sur le lien << paiement >>."
+      },
+      {
+        "step_2": "Saisir le MSISDN ou le Code de compte dans les Critères de recherche."
+      },
+      {
+        "step_3": "Cliquer sur le bouton <<< Rechercher >>>."
+      },
+      {
+        "step_4": "Choisir le mode de paiement (Espèce ou Chèque)."
+      },
+      {
+        "step_5": "Dans le champ 'Description', saisir le nom du Bureau de Poste et la date effective de paiement."
+      },
+      {
+        "step_6": "Cliquer sur le bouton <<< Soumettre >>>."
+      },
+      {
+        "step_7": "Cliquer sur le bouton <<<< Confirmer >>>> pour confirmer le paiement."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide NGBSS Création enquête PSTN et la Gestion d’ordre",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Création enquête PSTN et la Gestion d’ordre.pdf",
+    "Steps": [
+      {
+        "step_1": "Accéder à 'Client' puis 'Créer une nouvelle enquête'."
+      },
+      {
+        "step_2": "Cliquer sur 'Ajouter une nouvelle enquête'."
+      },
+      {
+        "step_3": "Cliquer sur 'Type d'enquête' pour choisir une des opérations: 'Enquête pour Nouvel abonné', 'Enquête pour Déménagement' ou 'Enquête pour Changement d'offre'."
+      },
+      {
+        "step_4": "Cliquer sur la loupe pour choisir l'offre primaire adéquate."
+      },
+      {
+        "step_5": "Dans la fenêtre de recherche, cliquer sur 'PSTN Sale', sélectionner l'offre primaire, puis confirmer."
+      },
+      {
+        "step_6": "Cliquer sur 'Confirmer'."
+      },
+      {
+        "step_7": "Cocher l'enquête, remplir les informations de l'adresse, saisir le N° Mobile et la date, puis cliquer sur 'confirmer L'enquête'."
+      },
+      {
+        "step_8": "Pour consulter l'ordre : Aller dans 'Gestion d'ordre' puis 'Consultation des Ordres des enquête'."
+      },
+      {
+        "step_9": "Sélectionner 'Consultation des Ordres des Enquête normales', remplir les champs de recherche si nécessaire, cliquer sur 'Rechercher', puis sur 'convertir' si l'enquête est réalisable."
+      },
+      {
+        "step_10": "Remplir les champs obligatoires 'Mot de passe' et 'Le N° Mobile'."
+      },
+      {
+        "step_11": "Saisir le N° Mobile et la date de réservation puis cliquer sur 'Continuer'."
+      },
+      {
+        "step_12": "Compléter les autres étapes dans les deux onglets 'Offre' et 'Compte', puis cliquer sur 'Continuer'."
+      },
+      {
+        "step_13": "Cliquer sur 'Payer maintenant'."
+      },
+      {
+        "step_14": "Si le client est présent : Imprimer le contrat, ajouter le contrat après la signature, puis cliquer sur 'paiement'. Si le client n'est pas présent : Cliquer sur 'Fermer la page en cours'."
+      },
+      {
+        "step_15": "Cliquer sur 'OK'."
+      },
+      {
+        "step_16": "Imprimer le reçu de paiement et fermer la page en cours."
+      },
+      {
+        "step_17": "Pour consulter les ordres du client : Aller dans 'Gestion d’ordre' puis 'Consulter les Ordres du client'."
+      },
+      {
+        "step_18": "Cocher 'Spécial' puis cliquer sur 'Plus de condition'."
+      },
+      {
+        "step_19": "Saisir le 'code Client' et cliquer sur 'Rechercher'."
+      },
+      {
+        "step_20": "Cliquer sur le N° d’ordre pour consulter le détail de l’ordre."
+      },
+      {
+        "step_21": "Pour consulter les ordres 'Général' : Cocher sur 'Général'."
+      },
+      {
+        "step_22": "Choisir le 'Type d’ordre' dans la liste déroulante et sélectionner l'intervalle de date (une semaine)."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide d'Utilisation NGBSS Retour ressource",
+    "path" : "data\\Guide NGBSS\\Guide d utilisation NGBSS retour ressource.pdf",
+    "Steps": [
+      {
+        "step_1": "Cas 1 (Pour client) : Cliquer sur 'Abonné' et 'Ressource'."
+      },
+      {
+        "step_2": "Cocher la ressource et cliquer sur 'Réserver le retour CSG'."
+      },
+      {
+        "step_3": "Cas 2 (Pour non client) : Cliquer sur 'Service clientèle' puis sur 'Ressources pour les clients non-existants'."
+      },
+      {
+        "step_4": "Dans 'Num de référence d'ordre', inscrire le Numéro du Reçu de paiement ou choisir 'Nom et Prénom' et la date de l'opération 'Order Date'."
+      },
+      {
+        "step_5": "Cocher sur la ressource et cliquer sur 'Suivant'."
+      },
+      {
+        "step_6": "Si le système génère un remboursement, cliquer sur 'Soumettre & paiement'."
+      },
+      {
+        "step_7": "Cliquer sur 'Rembourser'."
+      },
+      {
+        "step_8": "Continuer l'opération de remboursement et cliquer sur 'Paiement'."
+      },
+      {
+        "step_9": "Après remboursement, vérifier que l'état de la ressource sur Inventaire est 'Rendu'."
+      },
+      {
+        "step_10": "Dans 'Inventaire', cliquer sur 'Changer l’état d’une ressource'."
+      },
+      {
+        "step_11": "Dans la liste 'Etat', choisir 'rendu'."
+      },
+      {
+        "step_12": "Choisir une condition de recherche (rang, liste ou fichier) et cliquer sur 'consulter'."
+      },
+      {
+        "step_13": "Dans la liste 'Nouvel état', choisir 'Normal'."
+      },
+      {
+        "step_14": "Cocher sur la ressource et cliquer sur 'Soumettre'."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide d'utilisation NGBSS Edition facture duplicata",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Edition facture duplicata.pdf",
+    "Steps": [
+      {
+        "step_1": "Cliquer sur l'onglet 'Compte'."
+      },
+      {
+        "step_2": "Cliquer sur 'Réimpression de facture'."
+      },
+      {
+        "step_3": "Cliquer sur 'rechercher'."
+      },
+      {
+        "step_4": "Cocher la facture souhaitée."
+      },
+      {
+        "step_5": "Cliquer sur 'Suivant'."
+      },
+      {
+        "step_6": "Cliquer sur 'Soumettre & paiement'."
+      },
+      {
+        "step_7": "Cliquer sur 'Confirmer'."
+      },
+      {
+        "step_8": "Cliquer sur 'Soumettre et paiement'."
+      },
+      {
+        "step_9": "Cliquer sur le lien URL de téléchargement du fichier de facture."
+      },
+      {
+        "step_10": "Télécharger ou imprimer la facture."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide d'Utilisation NGBSS Création nouveau Pack IDOOM Fibre",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Création nouveau Pack IDOOM Fibre (1).pdf",
+    "Steps": [
+      {
+        "step_1": "Cliquer sur 'VOIP Sale' et choisir l'offre primaire."
+      },
+      {
+        "step_2": "Remplir les 'Information de base'."
+      },
+      {
+        "step_3": "Cliquer sur 'Continuer'."
+      },
+      {
+        "step_4": "Cliquer sur 'Plus d'offres' et choisir les offres demandées par le client."
+      },
+      {
+        "step_5": "Cliquer sur 'Plus de ressources', choisir l'ONT, puis cliquer sur 'synchroniser avec ONT'."
+      },
+      {
+        "step_6": "Cliquer sur 'Continuer'."
+      },
+      {
+        "step_7": "Cliquer sur 'Ajouter plus'."
+      },
+      {
+        "step_8": "Cliquer sur 'FTTX Sale' et choisir l'offre primaire."
+      },
+      {
+        "step_9": "Remplir les 'Information de base' pour la partie FTTX."
+      },
+      {
+        "step_10": "Cliquer sur 'Continuer'."
+      },
+      {
+        "step_11": "Dans 'Offre', ne pas ajouter d'offre supplémentaire. Continuer la création."
+      },
+      {
+        "step_12": "Cliquer sur 'Payer maintenant' et continuer."
+      },
+      {
+        "step_13": "Pour la recharge FTTH : cliquer sur 'offre' ensuite sur 'Gestion de la validité des offres prépayées'."
+      },
+      {
+        "step_14": "Cliquer sur 'Nouveau'."
+      },
+      {
+        "step_15": "'Offre supplémentaire' est donnée d’office selon l’offre primaire choisie."
+      },
+      {
+        "step_16": "Sur la liste déroulante 'No de mois' sélectionner le nombre de cycles ensuite cliquer sur 'suivant'."
+      },
+      {
+        "step_17": "Cliquer sur 'Soumettre & paiement' et continuer."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Enregistrement et encaissement Facture complémentaire TVA 2%",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Facture complémentaire TVA 2_.pdf",
+    "Steps": [
+      {
+        "step_1": "Cliquer sur 'Comptes Débiteurs' puis 'Demande ajustement' pour enregistrer la facture complémentaire."
+      },
+      {
+        "step_2": "Cliquer sur 'Prépaiement'."
+      },
+      {
+        "step_3": "Saisir le ND (Numéro de demande/MSISDN) et cliquer sur 'Rechercher'."
+      },
+      {
+        "step_4": "Sélectionner le niveau de compte, les notes de débit, la raison et le cycle de facturation."
+      },
+      {
+        "step_5": "Dans la description, introduire le commentaire : 'Facture complémentaire TVA 2%'."
+      },
+      {
+        "step_6": "Saisir le montant à forcer."
+      },
+      {
+        "step_7": "Cliquer sur 'Soumettre'."
+      },
+      {
+        "step_8": "Cliquer sur 'Confirmer'."
+      },
+      {
+        "step_9": "L'ajustement a été effectué avec succès. Cliquer sur 'D'Accord'."
+      },
+      {
+        "step_10": "Pour l'encaissement : Cliquer sur 'Comptes Débiteurs' puis 'Paiement'."
+      },
+      {
+        "step_11": "Saisir le ND et cliquer sur 'Rechercher'."
+      },
+      {
+        "step_12": "Choisir le mode de paiement."
+      },
+      {
+        "step_13": "Dans la description, introduire le commentaire : 'Facture complémentaire TVA 2%'."
+      },
+      {
+        "step_14": "Cliquer sur 'Soumettre'."
+      },
+      {
+        "step_15": "Cliquer sur 'Soumettre & paiement'."
+      },
+      {
+        "step_16": "Cliquer sur 'Confirmer'."
+      },
+      {
+        "step_17": "Cliquer sur 'Imprimer' pour obtenir le reçu."
+      }
+    ]
+  },
+{
+    "Process_Title": "Guide d'Utilisation NGBSS Inventaire - Consultation et changement d'état",
+    "path" :"data\\Guide NGBSS\\Guide NGBSS Inventaire.pdf",
+    "Steps": [
+      {
+        "step_1": "Pour consulter le stock : Aller dans « Inventaire » > « Consulter » > « Inventaire de ressource »."
+      },
+      {
+        "step_2": "Saisir les critères de recherche (Type de ressource, Modèle, etc.) et cliquer sur « Consulter »."
+      },
+      {
+        "step_3": "Pour consulter une ressource spécifique : Saisir le « Serial Number » et cliquer sur « Consulter »."
+      },
+      {
+        "step_4": "Pour changer l'état : Dans « Inventaire », cliquer sur « Changer l’état d’une ressource »."
+      },
+      {
+        "step_5": "Dans la liste déroulante « Etat », choisir l'état actuel (ex: « rendu »)."
+      },
+      {
+        "step_6": "Choisir une condition de recherche (rang, liste ou fichier) et cliquer sur « consulter »."
+      },
+      {
+        "step_7": "Dans la liste déroulante « Nouvel état », choisir le nouvel état (ex: « Normal »)."
+      },
+      {
+        "step_8": "Cocher sur la ressource et cliquer sur « Soumettre »."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide d'Utilisation NGBSS Réactivation Abonné 4G LTE",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Réactivation Abonné 4G LTE 1.pdf",
+    "Steps": [
+      {
+        "step_1": "Rechercher le client via « Portail client » en utilisant le MSISDN ou le Code client."
+      },
+      {
+        "step_2": "Cliquer sur « Gestion de service »."
+      },
+      {
+        "step_3": "Sélectionner « Rétablissement et déblocage »."
+      },
+      {
+        "step_4": "Sélectionner le numéro de service."
+      },
+      {
+        "step_5": "Dans la liste des raisons, sélectionner « Réactivation »."
+      },
+      {
+        "step_6": "Cliquer sur « Soumettre »."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide NGBSS Recharge par bon de commande - complément",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Recharge par bon de commande - complément.pdf",
+    "Steps": [
+      {
+        "step_1": "Aller dans « Comptes Débiteurs » > « Gestion des paiements » > « Paiement »."
+      },
+      {
+        "step_2": "Saisir le critère de recherche (ex: MSISDN) et cliquer sur « Rechercher »."
+      },
+      {
+        "step_3": "Dans « Méthode de paiement », sélectionner « Bon de Commande » (ou équivalent selon le guide spécifique)."
+      },
+      {
+        "step_4": "Saisir le montant."
+      },
+      {
+        "step_5": "Dans la description ou le champ référence, saisir le numéro du bon de commande."
+      },
+      {
+        "step_6": "Cliquer sur « Soumettre » puis « Confirmer »."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide NGBSS Vente par Lot",
+    "path" :"data\\Guide NGBSS\\Guide NGBSS Vente par Lot_V2.pdf",
+    "Steps": [
+      {
+        "step_1": "Aller dans « Service clientèle » > « Point de vente »."
+      },
+      {
+        "step_2": "Sélectionner « Vente par lot »."
+      },
+      {
+        "step_3": "Importer le fichier contenant les numéros de série des ressources à vendre."
+      },
+      {
+        "step_4": "Vérifier les ressources importées dans la liste."
+      },
+      {
+        "step_5": "Saisir les informations du client (Code client ou création nouveau client)."
+      },
+      {
+        "step_6": "Cliquer sur « Payer »."
+      },
+      {
+        "step_7": "Confirmer le paiement pour finaliser la vente par lot."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Paiement arrangement - Echéancier",
+    "path" : "data\\Guide NGBSS\\Payement arrangement -Echéancier- (2).pdf",
+    "Steps": [
+      {
+        "step_1": "Rechercher le client et aller sur l'onglet « Compte »."
+      },
+      {
+        "step_2": "Cliquer sur « Installment » (ou Echéancier)."
+      },
+      {
+        "step_3": "Cliquer sur « Nouveau »."
+      },
+      {
+        "step_4": "Saisir le « Montant total » à échelonner."
+      },
+      {
+        "step_5": "Saisir le « Nombre de versements » (mois)."
+      },
+      {
+        "step_6": "Saisir la « Date de début »."
+      },
+      {
+        "step_7": "Cliquer sur « Calculer » pour générer le plan."
+      },
+      {
+        "step_8": "Vérifier le tableau d'amortissement et cliquer sur « Soumettre »."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide NGBSS Saisie facture détaillée",
+    "path" : "data\\Guide NGBSS\\Saisie facture détaillée.pdf",
+    "Steps": [
+      {
+        "step_1": "Aller dans le module « Facturation »."
+      },
+      {
+        "step_2": "Sélectionner « Saisie facture » (ou fonctionnalité équivalente pour l'édition)."
+      },
+      {
+        "step_3": "Rechercher le compte du client."
+      },
+      {
+        "step_4": "Sélectionner la période ou le cycle de facturation concerné."
+      },
+      {
+        "step_5": "Cliquer sur « Détails » ou « Imprimer détail » pour générer la facture détaillée."
+      },
+      {
+        "step_6": "Télécharger ou imprimer le document généré."
+      }
+    ]
+  },
+  {
+    "Process_Title": "Guide NGBSS Ligne temporaire",
+    "path" : "data\\Guide NGBSS\\Guide NGBSS Ligne temporaire.pdf",
+    "Steps": [
+      {
+        "step_1": "Accéder à « Gestion d'ordre » > « Nouvel ordre »."
+      },
+      {
+        "step_2": "Sélectionner le type d'offre correspondant à une ligne temporaire."
+      },
+      {
+        "step_3": "Remplir les informations de base de l'abonné."
+      },
+      {
+        "step_4": "Définir la durée de validité ou la date de fin de la ligne temporaire."
+      },
+      {
+        "step_5": "Soumettre l'ordre."
+      },
+      {
+        "step_6": "Procéder au paiement si nécessaire."
+      }
+    ]
+  }
+]

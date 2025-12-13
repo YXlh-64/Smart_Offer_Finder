@@ -10,15 +10,17 @@ import hashlib
 from typing import Optional, Dict, Any, List
 import numpy as np
 
+REDIS_AVAILABLE = False
+
 try:
     import redis
     from redis.commands.search.field import VectorField, TextField, NumericField
     from redis.commands.search.indexDefinition import IndexDefinition, IndexType
     from redis.commands.search.query import Query
+    REDIS_AVAILABLE = True
 except ImportError:
-    raise ImportError(
-        "Redis is required for semantic caching. Install with: pip install redis[hiredis]"
-    )
+    print("⚠️ Redis search module not available. Semantic caching will be disabled.")
+    print("   To enable, install with: pip install redis[hiredis]")
 
 
 class SemanticCache:

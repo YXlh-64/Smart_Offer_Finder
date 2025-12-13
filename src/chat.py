@@ -1,6 +1,7 @@
 import sys
 from pathlib import Path
 from typing import List, Tuple, Optional, Any
+from urllib.parse import quote
 import os
 import requests
 import json
@@ -10,6 +11,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from langchain.chains import ConversationalRetrievalChain
 from langchain.memory import ConversationBufferMemory
+from langchain.prompts import PromptTemplate
 from langchain_community.embeddings.ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from langchain_community.llms import Ollama
@@ -25,6 +27,7 @@ import chromadb
 from .config import get_settings
 from .reranker import BGEReranker
 from .timing_visualizer import visualize_timing
+from .hybrid_retriever import get_hybrid_retriever_from_vectorstore, HybridRetriever, detect_language, filter_documents_by_language
 
 load_dotenv()
 
@@ -94,8 +97,10 @@ class E5EmbeddingsWrapper(Embeddings):
 # Global timing tracker
 timing_tracker = TimingTracker()
 
-# Global variables for chain and settings
-chain = None
+# Global variables for chains and settings
+chain_fr = None  # French chain
+chain_ar = None  # Arabic chain
+chain = None     # Default chain (for backward compatibility)
 settings = None
 
 
@@ -221,6 +226,7 @@ class RerankerRetriever(BaseRetriever):
     reranker: BGEReranker
     initial_k: int = 20
     timing_data: dict = {}  # Store timing for last retrieval
+    filter_by_language: bool = True  # Enable language filtering by default
     
     class Config:
         arbitrary_types_allowed = True
@@ -228,7 +234,7 @@ class RerankerRetriever(BaseRetriever):
     def _get_relevant_documents(
         self, query: str, *, run_manager: Optional[CallbackManagerForRetrieverRun] = None
     ) -> List[Document]:
-        """Retrieve documents and rerank them with timing."""
+        """Retrieve documents and rerank them with timing and language filtering."""
         # Reset timing data
         self.timing_data = {}
         
@@ -237,7 +243,16 @@ class RerankerRetriever(BaseRetriever):
         initial_docs = self.vectorstore.similarity_search(query, k=self.initial_k)
         self.timing_data["vectorstore_search"] = (time.time() - retrieval_start) * 1000
         
-        # Step 2: Rerank documents
+        # Step 2: Language filtering
+        if self.filter_by_language:
+            filter_start = time.time()
+            query_language = detect_language(query)
+            pre_filter_count = len(initial_docs)
+            initial_docs = filter_documents_by_language(initial_docs, query_language)
+            self.timing_data["language_filter"] = (time.time() - filter_start) * 1000
+            print(f"  🌐 Language filter: {query_language.upper()} ({pre_filter_count} → {len(initial_docs)} docs)")
+        
+        # Step 3: Rerank documents
         reranking_start = time.time()
         reranked_docs = self.reranker.rerank(query, initial_docs)
         self.timing_data["reranking"] = (time.time() - reranking_start) * 1000
@@ -245,10 +260,59 @@ class RerankerRetriever(BaseRetriever):
         return reranked_docs
 
 
-def build_chain(settings) -> ConversationalRetrievalChain:
-    """Build the conversational retrieval chain with optional reranking."""
+# ============== Language-Specific QA Prompts ==============
+
+# French prompt template
+QA_PROMPT_TEMPLATE_FR = """Vous êtes un assistant intelligent qui aide les utilisateurs à trouver des informations sur les offres et services télécom.
+
+Utilisez le contexte suivant pour répondre à la question. Si vous ne connaissez pas la réponse, dites simplement que vous ne savez pas, n'essayez pas d'inventer une réponse.
+
+Contexte:
+{context}
+
+Question: {question}
+
+Réponse:"""
+
+# Arabic prompt template
+QA_PROMPT_TEMPLATE_AR = """أنت مساعد ذكي يساعد المستخدمين في العثور على معلومات حول عروض وخدمات الاتصالات.
+
+استخدم السياق التالي للإجابة على السؤال. إذا كنت لا تعرف الإجابة، قل ببساطة أنك لا تعرف، ولا تحاول اختلاق إجابة.
+
+السياق:
+{context}
+
+السؤال: {question}
+
+الإجابة:"""
+
+QA_PROMPT_FR = PromptTemplate(
+    template=QA_PROMPT_TEMPLATE_FR,
+    input_variables=["context", "question"]
+)
+
+QA_PROMPT_AR = PromptTemplate(
+    template=QA_PROMPT_TEMPLATE_AR,
+    input_variables=["context", "question"]
+)
+
+
+def get_qa_prompt(language: str) -> PromptTemplate:
+    """Get the appropriate QA prompt based on detected language."""
+    if language == 'ar':
+        return QA_PROMPT_AR
+    return QA_PROMPT_FR  # Default to French
+
+
+def build_chain(settings, language: str = 'fr') -> ConversationalRetrievalChain:
+    """Build the conversational retrieval chain with optional hybrid search and reranking.
     
-    print("\n[build_chain] Starting chain construction...")
+    Args:
+        settings: Application settings
+        language: Language for the QA prompt ('fr' or 'ar')
+    """
+    
+    print(f"\n[build_chain] Building chain for language: {language.upper()}...")
     chain_start = time.time()
     
     # Step 1: Build LLM
@@ -265,11 +329,30 @@ def build_chain(settings) -> ConversationalRetrievalChain:
     vectorstore_time = (time.time() - step_start) * 1000
     print(f"       ✓ Vectorstore loaded in {vectorstore_time:.2f}ms")
     
-    # Step 3: Setup retriever
+    # Step 3: Setup retriever (priority: hybrid > reranker > standard)
     step_start = time.time()
     print("  [3/4] Setting up retriever...")
-    # Conditionally use reranker based on configuration
-    if settings.use_reranker:
+    
+    if settings.use_hybrid_search:
+        # Use hybrid search (BM25 + Dense with optional reranking)
+        print("       → Hybrid search enabled (BM25 + Dense)")
+        print(f"         BM25 weight: {settings.hybrid_bm25_weight}, Dense weight: {settings.hybrid_dense_weight}")
+        
+        retriever = get_hybrid_retriever_from_vectorstore(
+            vectorstore=vectorstore,
+            bm25_weight=settings.hybrid_bm25_weight,
+            dense_weight=settings.hybrid_dense_weight,
+            bm25_k=settings.hybrid_bm25_k,
+            dense_k=settings.hybrid_dense_k,
+            use_reranker=settings.use_reranker,
+            reranker_model=settings.reranker_model,
+            reranker_top_k=settings.reranker_top_k
+        )
+        
+        if settings.use_reranker:
+            print("         + Reranking enabled")
+        
+    elif settings.use_reranker:
         print("       → Reranker enabled - using two-stage retrieval")
         # Initialize reranker
         reranker = BGEReranker(
@@ -284,7 +367,7 @@ def build_chain(settings) -> ConversationalRetrievalChain:
             initial_k=settings.initial_retrieval_k
         )
     else:
-        print("       → Reranker disabled - using standard retrieval")
+        print("       → Standard retrieval (semantic only)")
         # Use standard retriever without reranking
         retriever = vectorstore.as_retriever(
             search_kwargs={"k": settings.reranker_top_k}
@@ -292,7 +375,7 @@ def build_chain(settings) -> ConversationalRetrievalChain:
     retriever_time = (time.time() - step_start) * 1000
     print(f"       ✓ Retriever setup in {retriever_time:.2f}ms")
     
-    # Step 4: Create memory and chain
+    # Step 4: Create memory and chain with language-specific prompt
     step_start = time.time()
     print("  [4/4] Creating conversation chain...")
     memory = ConversationBufferMemory(
@@ -301,37 +384,65 @@ def build_chain(settings) -> ConversationalRetrievalChain:
         output_key="answer"
     )
     
+    # Get language-specific prompt
+    qa_prompt = get_qa_prompt(language)
+    
     final_chain = ConversationalRetrievalChain.from_llm(
         llm=llm,
         retriever=retriever,
         memory=memory,
-        return_source_documents=True
+        return_source_documents=True,
+        combine_docs_chain_kwargs={"prompt": qa_prompt}
     )
     chain_creation_time = (time.time() - step_start) * 1000
     print(f"       ✓ Chain created in {chain_creation_time:.2f}ms")
     
     # Print total build time
     total_build_time = (time.time() - chain_start) * 1000
-    print("\n" + "="*60)
-    print(f"Chain build completed in {total_build_time:.2f}ms total")
-    print("="*60 + "\n")
+    print(f"   Chain ({language.upper()}) build completed in {total_build_time:.2f}ms")
     
     return final_chain
 
 
 def initialize_chain():
-    """Initialize the chain on startup."""
-    global chain, settings
+    """Initialize both language chains on startup."""
+    global chain, chain_fr, chain_ar, settings
     try:
         settings = get_settings()
-        chain = build_chain(settings)
-        print("[chat] Chain initialized successfully.")
+        
+        print("\n" + "="*60)
+        print("🚀 Building language-specific chains...")
+        print("="*60)
+        
+        # Build French chain
+        chain_fr = build_chain(settings, language='fr')
+        
+        # Build Arabic chain
+        chain_ar = build_chain(settings, language='ar')
+        
+        # Set default chain to French for backward compatibility
+        chain = chain_fr
+        
+        print("\n" + "="*60)
+        print("✅ Both chains initialized successfully!")
+        print("   - French chain: Ready")
+        print("   - Arabic chain: Ready")
+        print("="*60 + "\n")
+        
         return True
     except Exception as exc:
         print(f"[chat] Startup error: {exc}")
         import traceback
         traceback.print_exc()
         return False
+
+
+def get_chain_for_language(language: str) -> ConversationalRetrievalChain:
+    """Get the appropriate chain based on detected language."""
+    global chain_fr, chain_ar, chain
+    if language == 'ar':
+        return chain_ar if chain_ar else chain
+    return chain_fr if chain_fr else chain
 
 
 def chat_response(message: str, chat_history):
@@ -345,14 +456,14 @@ def chat_response(message: str, chat_history):
     Returns:
         Updated chat_history as list of tuples
     """
-    global chain, settings
+    global chain_fr, chain_ar, chain, settings
     
     # Start timing for this request
     request_start = time.time()
     steps_timing = {}
     detailed_steps = {}
     
-    # Step 1: Validate chain initialization
+    # Step 1: Validate chain initialization and detect language
     step_start = time.time()
     if chain is None:
         error_msg = "Chat interface not initialized. Make sure ChromaDB is properly configured and documents have been ingested."
@@ -360,12 +471,18 @@ def chat_response(message: str, chat_history):
             chat_history = []
         chat_history.append([message, error_msg])
         return chat_history
-    steps_timing["Chain validation"] = (time.time() - step_start) * 1000
+    
+    # Detect language and select appropriate chain
+    query_language = detect_language(message)
+    active_chain = get_chain_for_language(query_language)
+    print(f"  🌐 Query language: {query_language.upper()} → using {query_language.upper()} chain")
+    
+    steps_timing["Chain validation + language detection"] = (time.time() - step_start) * 1000
 
     try:
         # Step 2: Invoke chain (retrieval + LLM call)
         step_start = time.time()
-        result = chain.invoke({"question": message})
+        result = active_chain.invoke({"question": message})
         chain_invocation_time = (time.time() - step_start) * 1000
         steps_timing["Chain invocation (retrieval + LLM)"] = chain_invocation_time
         
@@ -376,7 +493,7 @@ def chat_response(message: str, chat_history):
         llm_time = 0.0
         
         try:
-            retriever = chain.retriever
+            retriever = active_chain.retriever
             if hasattr(retriever, 'timing_data') and retriever.timing_data:
                 retrieval_time = retriever.timing_data.get("vectorstore_search", 0)
                 reranking_time = retriever.timing_data.get("reranking", 0)
@@ -399,10 +516,37 @@ def chat_response(message: str, chat_history):
         source_docs = result.get("source_documents", []) or []
         steps_timing["Extract answer"] = (time.time() - step_start) * 1000
         
-        # Step 4: Format sources
+        # Step 4: Format sources as clickable markdown links
         step_start = time.time()
-        sources = [doc.metadata.get("source", "unknown") for doc in source_docs]
-        sources_text = "\n\n**Sources:**\n" + "\n".join(f"- {source}" for source in sources) if sources else ""
+        
+        # Deduplicate sources by file_path
+        seen_paths = set()
+        unique_sources = []
+        for doc in source_docs:
+            file_path = doc.metadata.get("file_path", "")
+            source_name = doc.metadata.get("source", "unknown")
+            
+            # Use file_path as unique key, fallback to source name
+            key = file_path if file_path else source_name
+            if key not in seen_paths:
+                seen_paths.add(key)
+                unique_sources.append({
+                    "name": source_name,
+                    "file_path": file_path
+                })
+        
+        # Build markdown links
+        sources_lines = []
+        for src in unique_sources:
+            if src["file_path"]:
+                # URL-encode the path for safe linking
+                encoded_path = quote(src["file_path"], safe="/")
+                sources_lines.append(f"- [{src['name']}](/files/{encoded_path})")
+            else:
+                # No file_path available, just show the name
+                sources_lines.append(f"- {src['name']}")
+        
+        sources_text = "\n\n**Sources:**\n" + "\n".join(sources_lines) if sources_lines else ""
         full_response = answer + sources_text
         steps_timing["Format sources"] = (time.time() - step_start) * 1000
         
