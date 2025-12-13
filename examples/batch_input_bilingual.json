@@ -1,0 +1,18 @@
+{
+  "equipe": "Evaluation_Team",
+  "question": {
+    "offres_internet": {
+      "1": "ما هي عروض Idoom ADSL المتوفرة؟",
+      "2": "كم سعر عرض Idoom Fibre 100 ميغا؟",
+      "3": "هل يوجد عروض خاصة للطلاب؟"
+    },
+    "conventions": {
+      "4": "Quels établissements ont signé une convention avec Algérie Télécom ?",
+      "5": "Quelles sont les conditions des conventions pour les universités ?"
+    },
+    "paiement": {
+      "6": "ما هي طرق الدفع الإلكتروني المتاحة؟",
+      "7": "هل هناك تخفيضات عند استخدام الدفع الإلكتروني؟"
+    }
+  }
+}

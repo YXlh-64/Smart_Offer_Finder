@@ -1,0 +1,22 @@
+{
+  "equipe": "IA_Team",
+  "reponses": {
+    "Smart_Offer_Finder": {
+      "1": "Le projet Smart Offer Finder est un système de Retrieval Augmented Generation (RAG) conçu pour faciliter la recherche intelligente de documents et répondre aux questions. Il permet de trouver des informations pertinentes sur les offres, conventions et guides opérationnels à travers une interface conversationnelle basée sur l'IA. Le système fonctionne entièrement en local ou avec des services gratuits, sans nécessiter d'APIs coûteuses.",
+      "2": "Les technologies utilisées incluent : Ollama pour les embeddings avec le modèle multilingual-e5-base, ChromaDB comme base de données vectorielle pour la recherche sémantique, un LLM local via Ollama ou d'autres APIs (OpenAI, etc.), Gradio pour l'interface web conversationnelle, et LangChain pour orchestrer le pipeline RAG. Le système utilise également Python avec FastAPI pour l'API backend."
+    },
+    "Idoom_ADSL": {
+      "3": "Les offres IDOOM ADSL comprennent plusieurs formules avec différents débits et services. Les principales offres incluent des forfaits avec connexion internet haut débit, téléphonie illimitée, et diverses options de débit allant de 4 Mbps à 20 Mbps. Chaque offre est adaptée aux besoins spécifiques des clients résidentiels et professionnels.",
+      "7": "Les débits proposés pour l'ADSL varient généralement entre 4 Mbps et 20 Mbps selon les offres. Les formules les plus courantes incluent des débits de 4 Mbps, 8 Mbps, 10 Mbps et 20 Mbps, permettant aux clients de choisir selon leurs besoins en consommation internet."
+    },
+    "Idoom_Fibre": {
+      "4": "L'offre Idoom Fibre présente plusieurs avantages majeurs : des débits très élevés pouvant atteindre plusieurs centaines de Mbps, une connexion plus stable et fiable, une latence réduite idéale pour le streaming et les jeux en ligne, et une meilleure qualité de service globale. La technologie fibre optique offre également une bande passante symétrique et supporte mieux les usages multiples simultanés."
+    },
+    "Conventions": {
+      "6": "La durée d'engagement minimale pour les conventions varie selon le type de convention et l'établissement concerné. Généralement, les conventions avec les établissements universitaires et éducatifs prévoient des engagements annuels renouvelables, avec des conditions spécifiques définies dans chaque accord."
+    },
+    "Paiement_Electronique": {
+      "5": "Le système de paiement électronique permet aux clients de régler leurs factures en ligne via plusieurs canaux : cartes bancaires (CIB, EDAHABIA), portefeuilles électroniques, et plateformes de paiement en ligne. Le système offre sécurité, rapidité et praticité, avec confirmation immédiate des transactions et possibilité de consulter l'historique des paiements."
+    }
+  }
+}

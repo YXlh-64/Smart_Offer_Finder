@@ -1,0 +1,43 @@
+{
+  "equipe": "Transformers+1",
+  "question": {
+    "convention_etablissement_N": {
+      "1": "Quels sont les détails de la convention entre Algérie Télécom et l’établissement N ?",
+      "2": "Quels sont les services inclus dans cette convention ?",
+      "3": "Quels sont les tarifs préférentiels pour Idoom ADSL, VDSL et Fibre ?",
+      "4": "Quels sont les avantages pour la téléphonie fixe ?",
+      "5": "Quel est le dossier à fournir pour bénéficier de la convention ?"
+    },
+    "اتفاقية_المؤسسة_N": {
+      "6": "ما هي تفاصيل هذه الاتفاقية بين اتصالات الجزائر والمؤسسة N؟",
+      "7": "ما هي الخدمات المشمولة في هذه الاتفاقية؟",
+      "8": "ما هي تسعيرات Idoom ADSL وVDSL وFibre؟",
+      "9": "ما هي مزايا الهاتف الثابت في الاتفاقية؟",
+      "10": "ما هو الملف المطلوب للاستفادة من الاتفاقية؟"
+    },
+    "convention_etablissement_L": {
+      "11": "Quelles sont les offres proposées par ALGERIE TELECOM pour l’établissement L ?",
+      "12": "Qui sont les bénéficiaires visés par cette convention ?",
+      "13": "Quels sont les tarifs préférentiels pour Idoom ADSL, VDSL et Fibre ?",
+      "14": "Quel est le dossier à fournir pour bénéficier de la convention ?"
+    },
+    "اتفاقية_المؤسسة_L": {
+      "15": "ما هي العروض التي تقترحها اتصالات الجزائر لفائدة المؤسسة L؟",
+      "16": "من هم المستفيدون من هذه الاتفاقية؟",
+      "17": "ما هي العروض التفضيلية المشمولة في هذه الاتفاقية؟",
+      "18": "ما هي الوثائق المطلوبة للاستفادة من هذه الاتفاقية؟"
+    },
+    "convention_etablissement_M": {
+      "19": "Quels sont les tarifs préférentiels pour le personnel actif et retraité de l’établissement M ?",
+      "20": "Quels sont les avantages des offres Idoom Fixe ?",
+      "21": "Qui est concerné par la convention Algérie Télécom & l’établissement M ?",
+      "22": "Quel est le dossier à fournir pour bénéficier de la convention ?"
+    },
+    "اتفاقية_المؤسسة_M": {
+      "23": "ما هي الأسعار التفضيلية لموظفي المؤسسة M في حالة نشاط والمتقاعدين؟",
+      "24": "ما هي مزايا عروض الهاتف الثابت Idoom Fixe؟",
+      "25": "من هم المعنيون بهذه الاتفاقية بين اتصالات الجزائر والمؤسسة M؟",
+      "26": "ما هو الملف المطلوب للاستفادة من الاتفاقية؟"
+    }
+  }
+}
